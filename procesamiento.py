@@ -134,7 +134,8 @@ def to_pptx(title_text, df=None, metrics_dict=None):
         table = slide.shapes.add_table(rows+1, cols, Inches(0.5), y_cursor, Inches(9), Inches(3)).table
         for c, col_name in enumerate(df_display.columns):
             cell = table.cell(0, c)
-            cell.text, cell.fill.solid() = str(col_name), True
+            cell.text = str(col_name)
+            cell.fill.solid()
             cell.fill.fore_color.rgb = RGBColor(0, 81, 149)
             cell.text_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
         for r in range(rows):
