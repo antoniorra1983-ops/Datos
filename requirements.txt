@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+python-pptx
+plotly
+xlsxwriter
+holidays
+openpyxl
