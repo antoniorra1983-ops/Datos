@@ -69,9 +69,9 @@ def leer_fecha_archivo(file):
         df = pd.read_excel(file, nrows=1, header=None)
         val = str(df.iloc[0, 0]).split('.')[0].strip().zfill(6)
         if len(val) == 6 and val.isdigit():
-            return (int(val[0:2]), int(val[2:4]), 2000 + int(val[4:6]))
+            return datetime(2000 + int(val[4:6]), int(val[2:4]), int(val[0:2])).date()
         match = re.search(r'(\d{2})[.-](\d{2})[.-](\d{2})', file.name)
-        if match: return (int(match.group(1)), int(match.group(2)), 2000 + int(match.group(3)))
+        if match: return datetime(2000 + int(match.group(3)), int(match.group(2)), int(match.group(1))).date()
     except: pass
     return None
 
@@ -80,7 +80,7 @@ def procesar_thdr_avanzado(file):
         df_raw = pd.read_excel(file, header=None)
         est_h = df_raw.iloc[0].ffill().values
         df = df_raw.iloc[2:].copy()
-        df = df[pd.to_numeric(df.iloc[:, 1], errors='coerce').notna()]
+        df = df[df.iloc[:, 1].notna()] # Más flexible para el número de servicio
         columnas_base = ["Recorrido", "Servicio", "Hora_Prog", "Motriz 1", "Motriz 2", "Unidad"]
         estaciones_raw = [str(est_h[i]) if pd.notna(est_h[i]) else f"Col_{i}" for i in range(6, len(df_raw.columns))]
         nombres_finales, conteos = list(columnas_base), {}
@@ -98,6 +98,7 @@ def procesar_thdr_avanzado(file):
                 n = str(n_est).upper()
                 if "PUERTO" in n: return "PU"
                 if "LIMACHE" in n: return "LI"
+                if "SA" in n or "ALDEA" in n: return "SA"
                 return n[:2]
             t_s, t_l = h_reales.iloc[0], h_reales.iloc[-1]
             if t_l < t_s: t_l += 1440
@@ -111,10 +112,10 @@ def procesar_thdr_avanzado(file):
         df['Peso'] = df['Unidad'].apply(lambda x: 2 if str(x).strip().upper() == 'M' else 1)
         df['Tren-Km'] = df['Dist_Base'] * df['Peso']
         df['Flota'] = df['Motriz 1'].apply(clasificar_flota_func)
-        f_info = leer_fecha_archivo(file)
-        if f_info: df['Fecha_Op'] = f"{f_info[0]:02d}/{f_info[1]:02d}/{f_info[2]}"
+        f_dt = leer_fecha_archivo(file)
+        df['Fecha_Op'] = f_dt if f_dt else None
         return df, df['Tren-Km'].sum(), df[df['TDV_Min'] > 0]['TDV_Min'].mean(), (df['Puntual'].sum() / len(df) * 100) if len(df) > 0 else 0
-    except: return pd.DataFrame(), 0, 0, 0
+    except Exception as e: return pd.DataFrame(), 0, 0, 0
 
 def to_pptx(title_text, df=None, metrics_dict=None):
     prs = Presentation()
@@ -134,7 +135,6 @@ def to_pptx(title_text, df=None, metrics_dict=None):
         table = slide.shapes.add_table(rows+1, cols, Inches(0.5), y_cursor, Inches(9), Inches(3)).table
         for c, col_name in enumerate(df_display.columns):
             cell = table.cell(0, c)
-            # CORRECCIÓN DE SINTAXIS AQUÍ:
             cell.text = str(col_name)
             cell.fill.solid()
             cell.fill.fore_color.rgb = RGBColor(0, 81, 149)
