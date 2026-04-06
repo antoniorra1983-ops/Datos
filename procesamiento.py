@@ -134,6 +134,7 @@ def to_pptx(title_text, df=None, metrics_dict=None):
         table = slide.shapes.add_table(rows+1, cols, Inches(0.5), y_cursor, Inches(9), Inches(3)).table
         for c, col_name in enumerate(df_display.columns):
             cell = table.cell(0, c)
+            # CORRECCIÓN DE SINTAXIS AQUÍ:
             cell.text = str(col_name)
             cell.fill.solid()
             cell.fill.fore_color.rgb = RGBColor(0, 81, 149)
@@ -154,10 +155,10 @@ def to_excel_consolidado(df_ops, df_tr, df_tr_acum, df_seat, df_p_d, df_p_15, df
             if not df.empty: df.to_excel(writer, index=False, sheet_name=name)
     return output.getvalue()
 
-def exportar_resumen_excel(metrics_dict, df_resumen_jornada, df_energia, df_datos_semanales=None):
+def exportar_resumen_excel(metrics_dict, df_resumen_jornada, df_energia):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        pd.DataFrame([metrics_dict]).T.reset_index().to_excel(writer, sheet_name='Métricas', index=False)
-        if df_resumen_jornada is not None and not df_resumen_jornada.empty: df_resumen_jornada.to_excel(writer, sheet_name='Resumen_Jornada', index=False)
-        if df_energia is not None and not df_energia.empty: df_energia.to_excel(writer, sheet_name='Energía_Prioridad', index=False)
+        pd.DataFrame([metrics_dict]).T.to_excel(writer, sheet_name='Métricas')
+        if not df_resumen_jornada.empty: df_resumen_jornada.to_excel(writer, sheet_name='Resumen_Jornada')
+        if not df_energia.empty: df_energia.to_excel(writer, sheet_name='Energía')
     return output.getvalue()
