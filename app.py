@@ -6,7 +6,7 @@ Versión INTEGRAL v117 — Restauración Total + Planificador:
 - MAPA HISTÓRICO (RESTAURADO): Reproductor animado, Squeeze Control, Auditoría THDR y Pax.
 - PLANIFICADOR V117: Lector automático de Planilla Maestra (CSV/Excel).
   Ruteo dinámico por N° de Viaje (Par/Impar) y N° de Servicio (>600, >400).
-- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors.
+- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Corrección de SyntaxError PEP 20.
 """
 import streamlit as st
 import pandas as pd
@@ -135,35 +135,76 @@ SPEED_PROFILE = [
 ]
 
 # =============================================================================
-# 2. FLOTA
+# 2. DICCIONARIO DE FLOTA CERTIFICADA 
 # =============================================================================
 FLOTA = {
     "XT-100": {
-        "tara_t":86.1,"m_iner_t":7.20,"coches":2,"cap_sent":94,"cap_max":398,
-        "n_motores":4,"a_max_ms2":1.0,"a_freno_ms2":1.2,"v_freno_min":3.81,
-        "eta_motor":0.92,"davis_A":1678.70,"davis_B":13.97,"davis_C":0.35,
-        "f_trac_max_kn":58.274,"f_freno_max_kn":52.976,
-        "p_max_kw":504.0,"p_freno_max_kw":600.0,"aux_kw":46.0,
+        "tara_t"       : 86.1, 
+        "m_iner_t"     : 7.20, 
+        "coches"       : 2, 
+        "cap_sent"     : 94, 
+        "cap_max"      : 398,
+        "n_motores"    : 4, 
+        "a_max_ms2"    : 1.0, 
+        "a_freno_ms2"  : 1.2,
+        "v_freno_min"  : 3.81, 
+        "eta_motor"    : 0.92, 
+        "davis_A"      : 1678.70, 
+        "davis_B"      : 13.97,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 58.274,   
+        "f_freno_max_kn": 52.976,  
+        "p_max_kw"     : 504.0,
+        "p_freno_max_kw": 600.0,
+        "aux_kw"       : 46.0      
     },
     "XT-M": {
-        "tara_t":95.0,"m_iner_t":8.0,"coches":2,"cap_sent":94,"cap_max":376,
-        "n_motores":4,"a_max_ms2":1.0,"a_freno_ms2":1.2,"v_freno_min":3.81,
-        "eta_motor":0.92,"davis_A":1440.60,"davis_B":0.00,"davis_C":0.35,
-        "f_trac_max_kn":65.0,"f_freno_max_kn":55.0,
-        "p_max_kw":720.0,"p_freno_max_kw":800.0,"aux_kw":55.0,
+        "tara_t"       : 95.0, 
+        "m_iner_t"     : 8.0, 
+        "coches"       : 2, 
+        "cap_sent"     : 94, 
+        "cap_max"      : 376,
+        "n_motores"    : 4, 
+        "a_max_ms2"    : 1.0, 
+        "a_freno_ms2"  : 1.2,
+        "v_freno_min"  : 3.81, 
+        "eta_motor"    : 0.92, 
+        "davis_A"      : 1440.60, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 65.0,   
+        "f_freno_max_kn": 55.0,  
+        "p_max_kw"     : 720.0,
+        "p_freno_max_kw": 800.0,
+        "aux_kw"       : 55.0      
     },
     "SFE": {
-        "tara_t":141.0,"m_iner_t":11.2,"coches":3,"cap_max":780,
-        "n_motores":8,"a_max_ms2":1.02,"a_freno_ms2":1.30,"v_freno_min":3.81,
-        "eta_motor":0.94,"davis_A":2694.6,"davis_B":16.70,"davis_C":0.35,
-        "f_trac_max_kn":220.0,"f_freno_max_kn":190.0,
-        "p_max_kw":2400.0,"p_freno_max_kw":2800.0,"aux_kw":190.0,
+        "tara_t"       : 141.0, 
+        "m_iner_t"     : 11.2, 
+        "coches"       : 3, 
+        "cap_max"      : 780,
+        "n_motores"    : 8,       
+        "a_max_ms2"    : 1.02,
+        "a_freno_ms2"  : 1.30, 
+        "v_freno_min"  : 3.81,
+        "eta_motor"    : 0.94,     
+        "davis_A"      : 2694.6, 
+        "davis_B"      : 16.70,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 220.0,   
+        "f_freno_max_kn": 190.0,  
+        "p_max_kw"     : 2400.0,
+        "p_freno_max_kw": 2800.0,
+        "aux_kw"       : 190.0     
     },
 }
 
 # =============================================================================
 # 3. FUNCIONES DE TIEMPO Y PARSEO
 # =============================================================================
+if 'min_slider_1' not in st.session_state:
+    st.session_state['min_slider_1'] = 480.0
+
 def mins_to_time_str(mins):
     if pd.isna(mins): return '--:--:--'
     try:
@@ -775,14 +816,25 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
 def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_regen, dict_regen, estacion_anio="primavera"):
     df_e = df_dia.copy()
     if df_e.empty: return df_e
+
     def _wrapper_energia(r):
         trc, aux, reg_panto_max, _, _, t_h = simular_tramo_termodinamico(
             r['tipo_tren'], r.get('doble', False), r['km_orig'], r['km_dest'], r['Via'],
             pct_trac, use_rm, use_pend, r.get('nodos'), r.get('pax_d', {}), r.get('pax_abordo', 0), None, r.get('maniobra'),
             estacion_anio, r.get('t_ini', 0.0)
         )
-        reg_util = reg_panto_max * (dict_regen.get(r.name, 0.0) if pct_headway_clasico:=dict_regen else 1.0) if use_regen else 0.0
-        return pd.Series([trc, aux, reg_util, max(0.0, reg_panto_max - reg_util), max(0.0, trc + aux - reg_util)])
+        
+        if not use_regen: 
+            reg_util = 0.0
+        elif dict_regen and r.name in dict_regen: 
+            reg_util = reg_panto_max * dict_regen[r.name]
+        else:
+            reg_util = reg_panto_max
+
+        reo_real = max(0.0, reg_panto_max - reg_util)
+        neto_real = max(0.0, trc + aux - reg_util)
+        return pd.Series([trc, aux, reg_util, reo_real, neto_real])
+
     df_e[['kwh_viaje_trac', 'kwh_viaje_aux', 'kwh_viaje_regen', 'kwh_reostato', 'kwh_viaje_neto']] = df_e.apply(_wrapper_energia, axis=1)
     return df_e
 
