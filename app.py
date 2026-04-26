@@ -77,8 +77,8 @@ ETA_REGEN_NETA       = 0.72
 ETA_MAX_REGEN        = 0.70
 LAMBDA_REGEN_KM      = 5.0
 V_NOMINAL_DC         = 3000.0
-V_REGEN_BLOCK        = 3650.0
-V_SQUEEZE_WARN       = 2850.0
+V_REGEN_BLOCK        = 3650.0   # V — umbral bloqueo rectificador unidireccional
+V_SQUEEZE_WARN       = 2850.0   # V — umbral squeeze control mínimo
 ETA_SER_RECTIFICADOR = 0.96
 ETA_MAX              = 0.70
 
@@ -1155,6 +1155,9 @@ def build_pax(blobs_v1, blobs_v2):
 def match_pax(row, df_pax): return ({},0,'--:--:--','',-1)
 def get_vacios_dia(df_dia): return []
 def draw_diagram(a,b,c,d,e,f,g): return go.Figure()
+
+def _all_blobs(f_uploader, gh_key): 
+    return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
 
 # =============================================================================
 # 14. UI PRINCIPAL Y SIDEBAR
