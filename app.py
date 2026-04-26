@@ -6,7 +6,7 @@ Versión INTEGRAL v117 — Restauración Total + Planificador:
 - MAPA HISTÓRICO (RESTAURADO): Reproductor animado, Squeeze Control, Auditoría THDR y Pax.
 - PLANIFICADOR V117: Lector automático de Planilla Maestra (CSV/Excel).
   Ruteo dinámico por N° de Viaje (Par/Impar) y N° de Servicio (>600, >400).
-- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Corrección de SyntaxError PEP 20.
+- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Lector Indestructible (Anti-xlrd error).
 """
 import streamlit as st
 import pandas as pd
@@ -14,11 +14,47 @@ import numpy as np
 import re
 import time
 import unicodedata
+import sys
+import subprocess
 from io import BytesIO
 from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador MERVAL", layout="wide", page_icon="🗺️")
+
+# =============================================================================
+# 0. LECTOR ROBUSTO DE DATOS (Anti-Errores XLRD y Falsos XLS)
+# =============================================================================
+def leer_archivo_robusto(data, fname):
+    ext = fname.lower()
+    if ext.endswith('.csv'):
+        try: return pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
+        except: return pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
+    else:
+        try:
+            # Intento limpio (Pandas decide el motor)
+            return pd.read_excel(BytesIO(data), header=None, dtype=str)
+        except Exception as e:
+            err_str = str(e).lower()
+            # 1. Instalación dinámica si falta xlrd (Catch para Streamlit Cloud)
+            if "xlrd" in err_str:
+                try:
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "xlrd>=2.0.1"])
+                    return pd.read_excel(BytesIO(data), header=None, dtype=str)
+                except: pass
+            
+            # 2. Rescate de Falsos XLS (Sistemas que exportan HTML como .xls)
+            try:
+                dfs = pd.read_html(BytesIO(data), header=None)
+                if dfs: return dfs[0].astype(str)
+            except: pass
+            
+            # 3. Rescate de Falsos XLS (Sistemas que exportan TSV como .xls)
+            try:
+                return pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+            except: pass
+            
+            raise e
 
 # =============================================================================
 # 1. INFRAESTRUCTURA, RED Y CONSTANTES GLOBALES
@@ -816,25 +852,18 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
 def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_regen, dict_regen, estacion_anio="primavera"):
     df_e = df_dia.copy()
     if df_e.empty: return df_e
-
     def _wrapper_energia(r):
         trc, aux, reg_panto_max, _, _, t_h = simular_tramo_termodinamico(
             r['tipo_tren'], r.get('doble', False), r['km_orig'], r['km_dest'], r['Via'],
             pct_trac, use_rm, use_pend, r.get('nodos'), r.get('pax_d', {}), r.get('pax_abordo', 0), None, r.get('maniobra'),
             estacion_anio, r.get('t_ini', 0.0)
         )
-        
-        if not use_regen: 
-            reg_util = 0.0
-        elif dict_regen and r.name in dict_regen: 
-            reg_util = reg_panto_max * dict_regen[r.name]
+        if use_regen:
+            reg_util = reg_panto_max * dict_regen.get(r.name, 1.0)
         else:
-            reg_util = reg_panto_max
-
-        reo_real = max(0.0, reg_panto_max - reg_util)
-        neto_real = max(0.0, trc + aux - reg_util)
-        return pd.Series([trc, aux, reg_util, reo_real, neto_real])
-
+            reg_util = 0.0
+            
+        return pd.Series([trc, aux, reg_util, max(0.0, reg_panto_max - reg_util), max(0.0, trc + aux - reg_util)])
     df_e[['kwh_viaje_trac', 'kwh_viaje_aux', 'kwh_viaje_regen', 'kwh_reostato', 'kwh_viaje_neto']] = df_e.apply(_wrapper_energia, axis=1)
     return df_e
 
@@ -1037,14 +1066,9 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
 # =============================================================================
 def parsear_planilla_maestra(data, fname):
     try:
-        ext = fname.lower()
-        if ext.endswith('.csv'):
-            try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
-            except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
-        else:
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
-            
+        raw = leer_archivo_robusto(data, fname)
+        if raw is None or raw.empty: return pd.DataFrame(), "Archivo vacío o no soportado."
+        
         viajes = []
         for i in range(len(raw)):
             row_vals = raw.iloc[i].fillna('').astype(str).tolist()
@@ -1122,7 +1146,7 @@ def render_planificador():
                 ])
             df_plan_edit = st.data_editor(st.session_state['df_plan'], num_rows="dynamic", use_container_width=True)
         else:
-            archivo_planilla = st.file_uploader("📂 Sube tu Planilla Maestra (.csv, .xlsx)", type=['csv', 'xlsx', 'xls'])
+            archivo_planilla = st.file_uploader("📂 Sube tu Planilla Maestra (.csv, .xlsx, .xls)", type=['csv', 'xlsx', 'xls'])
             df_plan_edit = pd.DataFrame()
             if archivo_planilla: st.success("Planilla detectada. Ejecuta la simulación.")
         
@@ -1218,13 +1242,8 @@ def render_planificador():
 # =============================================================================
 def procesar_thdr(data, fname, via_param=1):
     try:
-        ext = fname.lower()
-        if ext.endswith('.csv'):
-            try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
-            except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
-        else:
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+        raw = leer_archivo_robusto(data, fname)
+        if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
 
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
         fecha_str = extraer_fecha_segura(raw, fname)
@@ -1417,12 +1436,10 @@ def calcular_dwell(df1, df2):
 
 def cargar_pax(data, fname, via_param=1):
     try:
-        ext = fname.lower()
-        if ext.endswith('.csv'):
-            try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
-            except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
-        else: 
-            full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
+        full = leer_archivo_robusto(data, fname)
+        if full is None or full.empty:
+            st.error(f"El archivo {fname} está vacío o no se puede leer.")
+            return pd.DataFrame()
 
         if len(full) <= 10:
             st.error(f"El archivo {fname} tiene menos de 10 filas.")
@@ -2480,6 +2497,5 @@ def main():
                         mime='text/csv'
                     )
 
-# INICIO DEL PROGRAMA PRINCIPAL
 if __name__ == "__main__":
     main()
