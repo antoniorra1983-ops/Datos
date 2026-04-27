@@ -1218,7 +1218,8 @@ def procesar_thdr(data, fname, via_param=1):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            raw = pd.read_excel(BytesIO(data), header=None, dtype=str)
+            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
 
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
@@ -1417,7 +1418,7 @@ def cargar_pax(data, fname, via_param=1):
             try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else: 
-            full = pd.read_excel(BytesIO(data), header=None, dtype=str)
+            full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if full is None or full.empty:
             st.error(f"El archivo {fname} está vacío o no se puede leer.")
