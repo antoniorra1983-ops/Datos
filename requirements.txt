@@ -6,3 +6,4 @@ plotly
 xlsxwriter
 holidays
 openpyxl
+xrld
