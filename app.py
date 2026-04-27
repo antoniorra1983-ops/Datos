@@ -942,8 +942,16 @@ def procesar_thdr(data, fname, via_param=1):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    raw = dfs[0].astype(str)
+                except:
+                    try: raw = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: raw = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
@@ -1142,8 +1150,16 @@ def cargar_pax(data, fname, via_param=1):
             try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else: 
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    full = dfs[0].astype(str)
+                except:
+                    try: full = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if full is None or full.empty:
             st.error(f"El archivo {fname} está vacío o no se puede leer.")
@@ -1333,7 +1349,8 @@ def parsear_planilla_maestra(data, fname):
                     viajes.append({
                         '_id': f"PLAN_{tren_val}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
                         'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
-                        'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(tren_val), 'svc_type': ruta
+                        'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(tren_val), 'svc_type': ruta,
+                        'maniobra': None
                     })
                     
         df_viajes = pd.DataFrame(viajes)
@@ -1556,6 +1573,12 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0):
     """Función unificada que renderiza el Reproductor del Gemelo Digital (DRY Principle)"""
     
+    # --- FIX V117: Saneamiento de esquema dinámico (Schema Enforcement) ---
+    if 'maniobra' not in df_dia.columns:
+        df_dia['maniobra'] = None
+    if 'maniobra' not in df_dia_e.columns:
+        df_dia_e['maniobra'] = None
+        
     cf, cm = st.columns([3,2])
     with cm: modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"modo_{prefix_key}")
 
@@ -1730,7 +1753,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         
         if active_sers:
             km_centroid = v['km_orig'] if is_local_move else (v['km_orig'] + v['km_dest']) / 2.0
-            distrib_sers = distributing_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
+            distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
             for s_name, e_val in distrib_sers.items():
                 ser_accum_1[s_name] += e_val
                 
@@ -1962,7 +1985,18 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     with a3: st.metric("📏 Tren-km", f"{km_ac:,.0f}")
     with a4: st.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}")
     
-    with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_dia_total:,}")
+    if pax_dia_total > 0:
+        # Modo Planificador (ya tenemos el pax_ac de df_inic)
+        pax_ac = int(df_inic['pax_abordo'].sum()) if not df_inic.empty else 0
+    else:
+        # Modo THDR Normal
+        if not df_inic.empty:
+            df_inic_pax = df_inic[df_inic['pax_row_idx'] != -1].drop_duplicates(subset=['pax_row_idx'])
+            pax_ac = int(df_inic_pax['pax_abordo'].sum())
+        else:
+            pax_ac = 0
+        
+    with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_ac:,}")
     with a6: st.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
 
     st.divider()
