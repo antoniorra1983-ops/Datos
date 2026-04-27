@@ -1557,7 +1557,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     """Función unificada que renderiza el Reproductor del Gemelo Digital (DRY Principle)"""
     
     cf, cm = st.columns([3,2])
-    with cm: modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"m1_{prefix_key}")
+    with cm: modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"modo_{prefix_key}")
 
     if f'min_slider_{prefix_key}' not in st.session_state: st.session_state[f'min_slider_{prefix_key}'] = 480.0
     if f'play_{prefix_key}' not in st.session_state: st.session_state[f'play_{prefix_key}'] = False
@@ -1730,7 +1730,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         
         if active_sers:
             km_centroid = v['km_orig'] if is_local_move else (v['km_orig'] + v['km_dest']) / 2.0
-            distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
+            distrib_sers = distributing_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
             for s_name, e_val in distrib_sers.items():
                 ser_accum_1[s_name] += e_val
                 
