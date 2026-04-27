@@ -1358,7 +1358,7 @@ def parsear_planilla_maestra(data, fname):
             row_vals = raw.iloc[i].fillna('').astype(str).tolist()
             for c_idx, val in enumerate(row_vals):
                 val = val.strip()
-                if re.match(r'^\d{1,2}:\d{2}:\d{2}$', val):
+                if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', val):
                     t_ini = parse_time_to_mins(val)
                     if t_ini is None: continue
                     
@@ -1402,6 +1402,7 @@ def parsear_planilla_maestra(data, fname):
                         'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(tren_val), 'svc_type': ruta,
                         'maniobra': None
                     })
+                    break 
                     
         df_viajes = pd.DataFrame(viajes)
         if not df_viajes.empty: df_viajes = df_viajes.drop_duplicates(subset=['_id'])
@@ -1623,7 +1624,6 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0):
     """Función unificada que renderiza el Reproductor del Gemelo Digital (DRY Principle)"""
     
-    # --- FIX V117: Saneamiento de esquema dinámico (Schema Enforcement) ---
     if 'maniobra' not in df_dia.columns:
         df_dia['maniobra'] = None
     if 'maniobra' not in df_dia_e.columns:
@@ -2334,7 +2334,7 @@ def main():
                 st.warning(f"⚠️ Sin datos de pasajeros cargados. Se usará perfil estático: {pax_promedio_viaje} pax")
             
         with col_p2:
-            modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética"], horizontal=True)
+            modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética", "Laboratorio (Tramo Único)"], horizontal=True)
             archivo_planilla = None
             
             if modo_plan == "Matriz Sintética":
@@ -2356,104 +2356,151 @@ def main():
                     },
                     num_rows="dynamic", use_container_width=True
                 )
-            else:
-                st.markdown("**Asignación de Flota para Planilla Maestra (Rolling Stock)**")
-                col_f1, col_f2 = st.columns(2)
-                with col_f1: flota_largos = st.selectbox("Flota Servicios Largos (PU-LI / PU-SA)", ["XT-100", "XT-M", "SFE"], index=0)
-                with col_f2: flota_cortos = st.selectbox("Flota Servicios Cortos (PU-EB)", ["XT-100", "XT-M", "SFE"], index=1)
+            elif modo_plan == "Planilla Maestra (Subir CSV/Excel)":
                 archivo_planilla = st.file_uploader("📂 Sube tu Planilla Maestra (.csv, .xlsx, .xls)", type=['csv', 'xlsx', 'xls'])
                 df_plan_edit = pd.DataFrame()
-                if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
-        
-        if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
-            st.session_state['simulacion_plan_lista'] = False
-            with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
-                if modo_plan == "Matriz Sintética":
-                    df_sintetico_list = []
-                    for idx, row in df_plan_edit.iterrows():
-                        orig = row['Origen']; dest = row['Destino']; flota = row['Flota']
-                        es_doble = row['Configuración'] == "Doble"; cant = row['Cantidad']
-                        if cant <= 0 or orig == dest: continue
+                if archivo_planilla:
+                    df_temp, msg = parsear_planilla_maestra(archivo_planilla.getvalue(), archivo_planilla.name)
+                    if df_temp.empty:
+                        st.error(f"Error procesando la planilla: {msg}")
+                    else:
+                        st.success("✅ Planilla decodificada. Configura la flota por trayecto (Rolling Stock Rostering):")
+                        rutas_unicas = df_temp['svc_type'].unique()
                         
-                        idx_orig = ESTACIONES.index(orig)
-                        idx_dest = ESTACIONES.index(dest)
-                        via = 1 if idx_orig < idx_dest else 2
-                        km_ini = KM_ACUM[idx_orig]; km_fin = KM_ACUM[idx_dest]
-                        
-                        if via == 1: est_idxs = range(idx_orig, idx_dest + 1)
-                        else: est_idxs = range(idx_orig, idx_dest - 1, -1)
-                            
-                        nodos_sint = [(0.0, KM_ACUM[i]) for i in est_idxs]
-                        interval_mins = (1350 - 360) / cant if cant > 1 else 0
-                        ruta_str = f"{EC[idx_orig]}-{EC[idx_dest]}"
-                        
-                        for i in range(int(cant)):
-                            t_ini_sint = 360 + i * interval_mins
-                            df_sintetico_list.append({
-                                '_id': f"SINT_{ruta_str}_{i}", 't_ini': t_ini_sint, 'Via': via,
-                                'km_orig': km_ini, 'km_dest': km_fin, 'nodos': nodos_sint,
-                                'tipo_tren': flota, 'doble': es_doble, 'num_servicio': f"VIRT_{i}",
-                                'maniobra': None, 'svc_type': ruta_str
+                        if 'flota_map' not in st.session_state or set(st.session_state['flota_map']['Ruta']) != set(rutas_unicas):
+                            st.session_state['flota_map'] = pd.DataFrame({
+                                "Ruta": rutas_unicas,
+                                "Flota Asignada": ["XT-100"] * len(rutas_unicas)
                             })
-                    df_sint = pd.DataFrame(df_sintetico_list)
-                else:
-                    if archivo_planilla is None:
-                        st.warning("Debes subir la Planilla de Operación.")
-                        st.stop()
-                    df_sint, msg = parsear_planilla_maestra(archivo_planilla.read(), archivo_planilla.name)
-                    if df_sint.empty:
-                        st.error(f"Error procesando: {msg}")
-                        st.stop()
                         
-                    def asignar_flota_planilla(ruta):
-                        if 'EB' in str(ruta): return flota_cortos
-                        return flota_largos
-                    df_sint['tipo_tren'] = df_sint['svc_type'].apply(asignar_flota_planilla)
+                        df_flota_edit = st.data_editor(
+                            st.session_state['flota_map'],
+                            column_config={
+                                "Ruta": st.column_config.TextColumn("Ruta", disabled=True),
+                                "Flota Asignada": st.column_config.SelectboxColumn("Flota Asignada", options=["XT-100", "XT-M", "SFE"], required=True)
+                            },
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        st.session_state['temp_df_plan'] = df_temp
+                        st.session_state['temp_flota_edit'] = df_flota_edit
+            elif modo_plan == "Laboratorio (Tramo Único)":
+                st.markdown("### 🔬 Laboratorio de Tramo Único (Sandbox)")
+                st.caption("Aísla el motor termodinámico para evaluar escenarios específicos (Modo Degradado o de Contingencia).")
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                with col_s1: sb_orig = st.selectbox("Estación Origen", ESTACIONES, key="sb_o")
+                with col_s2: sb_dest = st.selectbox("Estación Destino", ESTACIONES, index=len(ESTACIONES)-1, key="sb_d")
+                with col_s3: sb_flota = st.selectbox("Tipo de Tren", ["XT-100", "XT-M", "SFE"], key="sb_f")
+                with col_s4: sb_pax = st.number_input("Pasajeros a bordo", 0, 1000, 150)
+                
+                if st.button("⚡ Simular Tramo", use_container_width=True):
+                    if sb_orig == sb_dest:
+                        st.warning("El origen y destino deben ser diferentes.")
+                    else:
+                        idx_o = ESTACIONES.index(sb_orig)
+                        idx_d = ESTACIONES.index(sb_dest)
+                        via_sb = 1 if idx_o < idx_d else 2
+                        km_o = KM_ACUM[idx_o]
+                        km_d = KM_ACUM[idx_d]
+                        est_idxs_sb = range(idx_o, idx_d + 1) if via_sb == 1 else range(idx_o, idx_d - 1, -1)
+                        nodos_sb = [(0.0, KM_ACUM[i]) for i in est_idxs_sb]
+                        
+                        with st.spinner("Calculando termodinámica diferencial..."):
+                            trc_sb, aux_sb, reg_sb, _, neto_sb, th_sb = simular_tramo_termodinamico(
+                                sb_flota, False, km_o, km_d, via_sb, pct_trac, use_rm, use_pend, nodos_sb, {}, sb_pax, None, None, estacion_anio_plan, 480.0
+                            )
+                        st.success(f"Simulación exitosa: {sb_orig} ➔ {sb_dest} | Distancia: {abs(km_d - km_o):.2f} km")
+                        c_sb1, c_sb2, c_sb3, c_sb4 = st.columns(4)
+                        c_sb1.metric("⏱️ Tiempo de Viaje", f"{th_sb * 60:.1f} min")
+                        c_sb2.metric("⚡ Energía Tracción", f"{trc_sb:.1f} kWh")
+                        c_sb3.metric("♻️ Energía Regenerada", f"{reg_sb:.1f} kWh")
+                        c_sb4.metric("💡 IDE del Tramo", f"{neto_sb / abs(km_d - km_o):.3f} kWh/km")
+        
+        if modo_plan in ["Matriz Sintética", "Planilla Maestra (Subir CSV/Excel)"]:
+            if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
+                st.session_state['simulacion_plan_lista'] = False
+                with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
+                    if modo_plan == "Matriz Sintética":
+                        df_sintetico_list = []
+                        for idx, row in df_plan_edit.iterrows():
+                            orig = row['Origen']; dest = row['Destino']; flota = row['Flota']
+                            es_doble = row['Configuración'] == "Doble"; cant = row['Cantidad']
+                            if cant <= 0 or orig == dest: continue
+                            
+                            idx_orig = ESTACIONES.index(orig)
+                            idx_dest = ESTACIONES.index(dest)
+                            via = 1 if idx_orig < idx_dest else 2
+                            km_ini = KM_ACUM[idx_orig]; km_fin = KM_ACUM[idx_dest]
+                            
+                            if via == 1: est_idxs = range(idx_orig, idx_dest + 1)
+                            else: est_idxs = range(idx_orig, idx_dest - 1, -1)
+                                
+                            nodos_sint = [(0.0, KM_ACUM[i]) for i in est_idxs]
+                            interval_mins = (1350 - 360) / cant if cant > 1 else 0
+                            ruta_str = f"{EC[idx_orig]}-{EC[idx_dest]}"
+                            
+                            for i in range(int(cant)):
+                                t_ini_sint = 360 + i * interval_mins
+                                df_sintetico_list.append({
+                                    '_id': f"SINT_{ruta_str}_{i}", 't_ini': t_ini_sint, 'Via': via,
+                                    'km_orig': km_ini, 'km_dest': km_fin, 'nodos': nodos_sint,
+                                    'tipo_tren': flota, 'doble': es_doble, 'num_servicio': f"VIRT_{i}",
+                                    'maniobra': None, 'svc_type': ruta_str
+                                })
+                        df_sint = pd.DataFrame(df_sintetico_list)
+                    else:
+                        if 'temp_df_plan' not in st.session_state:
+                            st.warning("Debes subir la Planilla de Operación.")
+                            st.stop()
+                        df_sint = st.session_state['temp_df_plan'].copy()
+                        df_flota_edit = st.session_state['temp_flota_edit']
+                        flota_dict = dict(zip(df_flota_edit['Ruta'], df_flota_edit['Flota Asignada']))
+                        df_sint['tipo_tren'] = df_sint['svc_type'].apply(lambda x: flota_dict.get(x, 'XT-100'))
 
-                if df_sint.empty:
-                    st.warning("No hay viajes para simular.")
-                    st.stop()
+                    if df_sint.empty:
+                        st.warning("No hay viajes para simular.")
+                        st.stop()
 
-                st.session_state['raw_plan_df'] = df_sint
-                st.session_state['simulacion_plan_lista'] = True
+                    st.session_state['raw_plan_df'] = df_sint
+                    st.session_state['simulacion_plan_lista'] = True
 
-        if st.session_state.get('simulacion_plan_lista', False) and 'raw_plan_df' in st.session_state:
-            df_sint = st.session_state['raw_plan_df']
-            df_sint_final, df_sint_e = procesar_planificador_reactivo(
-                df_sint, tipo_dia_plan, pax_promedio_viaje, estacion_anio_plan, 
-                pct_trac, use_rm, use_pend, use_regen, tipo_regen, perfiles_pax
-            )
-            pax_tot = int(df_sint_final['pax_abordo'].sum())
-            
-            st.divider()
-            st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
-            
-            render_gemelo_digital(
-                df_sint_final, df_sint_e, active_sers, 
-                f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", 
-                pct_trac, use_rm, use_pend, estacion_anio_plan, 
-                prefix_key="plan", gap_vias=gap_vias, pax_dia_total=pax_tot
-            )
-            
-            st.divider()
-            st.markdown("### 📅 Proyección Estratégica Mensual (Capex/Opex)")
-            st.caption("Extrapola la malla unitaria diaria a un mes calendario para estimar la facturación de Alta Tensión y el volumen de pasajeros.")
-            col_m1, col_m2, col_m3 = st.columns(3)
-            with col_m1: dias_laborales = st.number_input("Días Laborales en el mes", min_value=0, max_value=31, value=22)
-            with col_m2: dias_sabados = st.number_input("Sábados en el mes", min_value=0, max_value=5, value=4)
-            with col_m3: dias_domingos = st.number_input("Domingos/Festivos", min_value=0, max_value=10, value=4)
-            
-            total_dias_mes = dias_laborales + dias_sabados + dias_domingos
-            kwh_neto_dia = df_sint_e['kwh_viaje_neto'].sum()
-            kwh_neto_mes = kwh_neto_dia * total_dias_mes
-            pax_dia = pax_tot
-            pax_mes = pax_dia * total_dias_mes
-            
-            st.info(f"**Proyección para {total_dias_mes} días (Asumiendo que la malla '{tipo_dia_plan}' se repite diariamente):**")
-            cm1, cm2, cm3 = st.columns(3)
-            cm1.metric("⚡ Consumo Mensual Proyectado (Neto)", f"{kwh_neto_mes:,.0f} kWh")
-            cm2.metric("🧑‍🤝‍🧑 Pasajeros Mensuales Proyectados", f"{pax_mes:,} pax")
-            cm3.metric("💰 Costo Energía Estimado (100 CLP/kWh)", f"${kwh_neto_mes * 100:,.0f} CLP")
+            if st.session_state.get('simulacion_plan_lista', False) and 'raw_plan_df' in st.session_state:
+                df_sint = st.session_state['raw_plan_df']
+                df_sint_final, df_sint_e = procesar_planificador_reactivo(
+                    df_sint, tipo_dia_plan, pax_promedio_viaje, estacion_anio_plan, 
+                    pct_trac, use_rm, use_pend, use_regen, tipo_regen, perfiles_pax
+                )
+                pax_tot = int(df_sint_final['pax_abordo'].sum())
+                
+                st.divider()
+                st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
+                
+                render_gemelo_digital(
+                    df_sint_final, df_sint_e, active_sers, 
+                    f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", 
+                    pct_trac, use_rm, use_pend, estacion_anio_plan, 
+                    prefix_key="plan", gap_vias=gap_vias, pax_dia_total=pax_tot
+                )
+                
+                st.divider()
+                st.markdown("### 📅 Proyección Estratégica Mensual (Capex/Opex)")
+                st.caption("Extrapola la malla unitaria diaria a un mes calendario para estimar la facturación de Alta Tensión y el volumen de pasajeros.")
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1: dias_laborales = st.number_input("Días Laborales en el mes", min_value=0, max_value=31, value=22)
+                with col_m2: dias_sabados = st.number_input("Sábados en el mes", min_value=0, max_value=5, value=4)
+                with col_m3: dias_domingos = st.number_input("Domingos/Festivos", min_value=0, max_value=10, value=4)
+                
+                total_dias_mes = dias_laborales + dias_sabados + dias_domingos
+                kwh_neto_dia = df_sint_e['kwh_viaje_neto'].sum()
+                kwh_neto_mes = kwh_neto_dia * total_dias_mes
+                pax_dia = pax_tot
+                pax_mes = pax_dia * total_dias_mes
+                
+                st.info(f"**Proyección para {total_dias_mes} días (Asumiendo que la malla '{tipo_dia_plan}' se repite diariamente):**")
+                cm1, cm2, cm3 = st.columns(3)
+                cm1.metric("⚡ Consumo Mensual Proyectado (Neto)", f"{kwh_neto_mes:,.0f} kWh")
+                cm2.metric("🧑‍🤝‍🧑 Pasajeros Mensuales Proyectados", f"{pax_mes:,} pax")
+                cm3.metric("💰 Costo Energía Estimado (100 CLP/kWh)", f"${kwh_neto_mes * 100:,.0f} CLP")
 
     with tab_mapa:
         if df_all.empty:
