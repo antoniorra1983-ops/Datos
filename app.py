@@ -6,7 +6,7 @@ Versión INTEGRAL v117 — Restauración Total + Planificador Inteligente:
 - MAPA HISTÓRICO: Reproductor animado, Squeeze Control, Auditoría THDR y Pax.
 - PLANIFICADOR V117: Usa Planilla Maestra (CSV/Excel) + Perfiles de Pasajeros Reales.
   Renderiza el Gemelo Digital visualmente igual que el Mapa Operativo.
-- ARQUITECTURA: DRY Principle. Módulo render_gemelo_digital reutilizable.
+- ARQUITECTURA: DRY Principle (Des-duplicado). Módulo render_gemelo_digital reutilizable.
 """
 import streamlit as st
 import pandas as pd
@@ -917,6 +917,23 @@ def get_perfiles_pax(df_px):
             
     return perfiles
 
+def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
+    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
+    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
+    pax_val = 0
+    if via == 1:
+        for i in range(N_EST):
+            if km_pos >= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    else:
+        for i in range(N_EST - 1, -1, -1):
+            if km_pos <= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    return int(pax_val)
 
 # =============================================================================
 # 10. DIAGRAMA Y DASHBOARDS (RENDERING UI REUTILIZABLE)
@@ -1685,9 +1702,12 @@ def main():
         st.divider()
         gap_vias=st.slider("Separación Visual Vías (px)",120,350,200,10)
 
+    def _all_blobs_internal(f_uploader, gh_key): 
+        return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
+
     # Procesar archivos base
-    b1=_all_blobs(f_v1,"gh_blobs_v1"); b2=_all_blobs(f_v2,"gh_blobs_v2")
-    bx1=_all_blobs(f_px1,"gh_blobs_px1"); bx2=_all_blobs(f_px2,"gh_blobs_px2")
+    b1=_all_blobs_internal(f_v1,"gh_blobs_v1"); b2=_all_blobs_internal(f_v2,"gh_blobs_v2")
+    bx1=_all_blobs_internal(f_px1,"gh_blobs_px1"); bx2=_all_blobs_internal(f_px2,"gh_blobs_px2")
     df1,df2,err_t=build_thdr_v71(b1,b2)
     df_px,err_p  =build_pax_v71(bx1,bx2)
     
