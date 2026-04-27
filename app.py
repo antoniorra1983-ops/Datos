@@ -149,12 +149,12 @@ FLOTA = {
         "a_freno_ms2"  : 1.2,
         "v_freno_min"  : 3.81, 
         "eta_motor"    : 0.92, 
-        "davis_A"      : 1678.70, 
-        "davis_B"      : 13.97,
-        "davis_C"      : 0.35,     
+        "davis_A"      : 1615.00, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.5458,     
         "f_trac_max_kn": 58.274,   
         "f_freno_max_kn": 52.976,  
-        "p_max_kw"     : 504.0,
+        "p_max_kw"     : 720.0,
         "p_freno_max_kw": 600.0,
         "aux_kw"       : 46.0      
     },
@@ -174,7 +174,7 @@ FLOTA = {
         "davis_C"      : 0.35,     
         "f_trac_max_kn": 65.0,   
         "f_freno_max_kn": 55.0,  
-        "p_max_kw"     : 720.0,
+        "p_max_kw"     : 1040.0,
         "p_freno_max_kw": 800.0,
         "aux_kw"       : 55.0      
     },
@@ -183,14 +183,14 @@ FLOTA = {
         "m_iner_t"     : 11.2, 
         "coches"       : 3, 
         "cap_max"      : 780,
-        "n_motores"    : 8,       
+        "n_motores"    : 8,        
         "a_max_ms2"    : 1.02,
         "a_freno_ms2"  : 1.30, 
         "v_freno_min"  : 3.81,
         "eta_motor"    : 0.94,     
-        "davis_A"      : 2694.6, 
-        "davis_B"      : 16.70,
-        "davis_C"      : 0.35,     
+        "davis_A"      : 2480.00, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.4714,     
         "f_trac_max_kn": 220.0,   
         "f_freno_max_kn": 190.0,  
         "p_max_kw"     : 2400.0,
@@ -647,8 +647,8 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
 def calcular_demanda_ser(e_pantografo_kwh, t_horas, km_punto, km_ser):
     if t_horas <= 0: return e_pantografo_kwh
     V_NOMINAL = 3000.0  
-    if km_punto < 2.25: r_km = 0.0638       
-    elif km_punto < 6.80: r_km = 0.0530     
+    if km_punto < 2.25: r_km = 0.0638        
+    elif km_punto < 6.80: r_km = 0.0530      
     elif km_punto < 10.92: r_km = 0.0495    
     elif km_punto < 21.41: r_km = 0.0417    
     elif km_punto < 30.36: r_km = 0.0399    
