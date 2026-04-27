@@ -1578,6 +1578,24 @@ def match_pax(row, df_pax):
 
     return EMPTY
 
+def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
+    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
+    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
+    pax_val = 0
+    if via == 1:
+        for i in range(N_EST):
+            if km_pos >= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    else:
+        for i in range(N_EST - 1, -1, -1):
+            if km_pos <= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    return int(pax_val)
+
 # =============================================================================
 # 13. CACHÉ Y CARGADORES DE STREAMLIT (UI)
 # =============================================================================
