@@ -6,7 +6,7 @@ Versión INTEGRAL v117 — Restauración Total + Planificador:
 - MAPA HISTÓRICO (RESTAURADO): Reproductor animado, Squeeze Control, Auditoría THDR y Pax.
 - PLANIFICADOR V117: Lector automático de Planilla Maestra (CSV/Excel).
   Ruteo dinámico por N° de Viaje (Par/Impar) y N° de Servicio (>600, >400).
-- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Lector restaurado a estado estable.
+- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Lector de archivos robusto anti-XLRD.
 """
 import streamlit as st
 import pandas as pd
@@ -1038,7 +1038,17 @@ def parsear_planilla_maestra(data, fname):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            raw = pd.read_excel(BytesIO(data), header=None, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                # Estrategia de rescate "Falso XLS" para entornos sin xlrd o archivos HTML/TSV disfrazados
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    raw = dfs[0].astype(str)
+                except:
+                    try: raw = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: raw = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
             
         viajes = []
         for i in range(len(raw)):
@@ -1218,8 +1228,17 @@ def procesar_thdr(data, fname, via_param=1):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                # Rescate para entornos sin xlrd o falsos XLS (HTML/TSV disfrazados)
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    raw = dfs[0].astype(str)
+                except:
+                    try: raw = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: raw = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
@@ -1418,7 +1437,17 @@ def cargar_pax(data, fname, via_param=1):
             try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else: 
-            full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                # Rescate para entornos sin xlrd o falsos XLS
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    full = dfs[0].astype(str)
+                except:
+                    try: full = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if full is None or full.empty:
             st.error(f"El archivo {fname} está vacío o no se puede leer.")
@@ -2480,5 +2509,6 @@ def main():
                         mime='text/csv'
                     )
 
+# INICIO DEL PROGRAMA PRINCIPAL
 if __name__ == "__main__":
     main()
