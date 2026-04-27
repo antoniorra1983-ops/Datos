@@ -6,7 +6,7 @@ Versión INTEGRAL v117 — Restauración Total + Planificador:
 - MAPA HISTÓRICO (RESTAURADO): Reproductor animado, Squeeze Control, Auditoría THDR y Pax.
 - PLANIFICADOR V117: Lector automático de Planilla Maestra (CSV/Excel).
   Ruteo dinámico por N° de Viaje (Par/Impar) y N° de Servicio (>600, >400).
-- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Lector Indestructible (Anti-xlrd error).
+- ARQUITECTURA: Ejecución encapsulada en main() para prevenir NameErrors. Lector restaurado a estado estable.
 """
 import streamlit as st
 import pandas as pd
@@ -14,47 +14,11 @@ import numpy as np
 import re
 import time
 import unicodedata
-import sys
-import subprocess
 from io import BytesIO
 from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador MERVAL", layout="wide", page_icon="🗺️")
-
-# =============================================================================
-# 0. LECTOR ROBUSTO DE DATOS (Anti-Errores XLRD y Falsos XLS)
-# =============================================================================
-def leer_archivo_robusto(data, fname):
-    ext = fname.lower()
-    if ext.endswith('.csv'):
-        try: return pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
-        except: return pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
-    else:
-        try:
-            # Intento limpio (Pandas decide el motor)
-            return pd.read_excel(BytesIO(data), header=None, dtype=str)
-        except Exception as e:
-            err_str = str(e).lower()
-            # 1. Instalación dinámica si falta xlrd (Catch para Streamlit Cloud)
-            if "xlrd" in err_str:
-                try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "xlrd>=2.0.1"])
-                    return pd.read_excel(BytesIO(data), header=None, dtype=str)
-                except: pass
-            
-            # 2. Rescate de Falsos XLS (Sistemas que exportan HTML como .xls)
-            try:
-                dfs = pd.read_html(BytesIO(data), header=None)
-                if dfs: return dfs[0].astype(str)
-            except: pass
-            
-            # 3. Rescate de Falsos XLS (Sistemas que exportan TSV como .xls)
-            try:
-                return pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
-            except: pass
-            
-            raise e
 
 # =============================================================================
 # 1. INFRAESTRUCTURA, RED Y CONSTANTES GLOBALES
@@ -859,7 +823,10 @@ def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_re
             estacion_anio, r.get('t_ini', 0.0)
         )
         if use_regen:
-            reg_util = reg_panto_max * dict_regen.get(r.name, 1.0)
+            if dict_regen and r.name in dict_regen:
+                reg_util = reg_panto_max * dict_regen[r.name]
+            else:
+                reg_util = reg_panto_max
         else:
             reg_util = 0.0
             
@@ -1066,9 +1033,13 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
 # =============================================================================
 def parsear_planilla_maestra(data, fname):
     try:
-        raw = leer_archivo_robusto(data, fname)
-        if raw is None or raw.empty: return pd.DataFrame(), "Archivo vacío o no soportado."
-        
+        ext = fname.lower()
+        if ext.endswith('.csv'):
+            try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
+            except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
+        else:
+            raw = pd.read_excel(BytesIO(data), header=None, dtype=str)
+            
         viajes = []
         for i in range(len(raw)):
             row_vals = raw.iloc[i].fillna('').astype(str).tolist()
@@ -1242,9 +1213,14 @@ def render_planificador():
 # =============================================================================
 def procesar_thdr(data, fname, via_param=1):
     try:
-        raw = leer_archivo_robusto(data, fname)
-        if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
+        ext = fname.lower()
+        if ext.endswith('.csv'):
+            try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
+            except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
+        else:
+            raw = pd.read_excel(BytesIO(data), header=None, dtype=str)
 
+        if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
         fecha_str = extraer_fecha_segura(raw, fname)
         header_idx = 1
@@ -1436,7 +1412,13 @@ def calcular_dwell(df1, df2):
 
 def cargar_pax(data, fname, via_param=1):
     try:
-        full = leer_archivo_robusto(data, fname)
+        ext = fname.lower()
+        if ext.endswith('.csv'):
+            try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
+            except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
+        else: 
+            full = pd.read_excel(BytesIO(data), header=None, dtype=str)
+
         if full is None or full.empty:
             st.error(f"El archivo {fname} está vacío o no se puede leer.")
             return pd.DataFrame()
