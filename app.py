@@ -71,7 +71,7 @@ DWELL_DEF = 8.0
 DAVIS_E_N_PERMIL = 9.81
 ETA_TRAC_SISTEMA = 0.92  
 ETA_REGEN_NETA   = 0.72   
-LAMBDA_KM        = 5.0     
+LAMBDA_REGEN_KM  = 5.0     
 ETA_SER_RECTIFICADOR = 0.96 
 ETA_MAX   = 0.70
 V_NOMINAL_DC = 3000.0
@@ -1042,7 +1042,6 @@ def parsear_planilla_maestra(data, fname):
                 eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
                 raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
             except Exception as e:
-                # Estrategia de rescate "Falso XLS" para entornos sin xlrd o archivos HTML/TSV disfrazados
                 try: 
                     dfs = pd.read_html(BytesIO(data), header=None)
                     raw = dfs[0].astype(str)
@@ -1232,7 +1231,6 @@ def procesar_thdr(data, fname, via_param=1):
                 eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
                 raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
             except Exception as e:
-                # Rescate para entornos sin xlrd o falsos XLS (HTML/TSV disfrazados)
                 try: 
                     dfs = pd.read_html(BytesIO(data), header=None)
                     raw = dfs[0].astype(str)
@@ -1441,7 +1439,6 @@ def cargar_pax(data, fname, via_param=1):
                 eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
                 full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
             except Exception as e:
-                # Rescate para entornos sin xlrd o falsos XLS
                 try: 
                     dfs = pd.read_html(BytesIO(data), header=None)
                     full = dfs[0].astype(str)
@@ -2509,6 +2506,5 @@ def main():
                         mime='text/csv'
                     )
 
-# INICIO DEL PROGRAMA PRINCIPAL
 if __name__ == "__main__":
     main()
