@@ -942,16 +942,8 @@ def procesar_thdr(data, fname, via_param=1):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            try:
-                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-                raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
-            except Exception as e:
-                try: 
-                    dfs = pd.read_html(BytesIO(data), header=None)
-                    raw = dfs[0].astype(str)
-                except:
-                    try: raw = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
-                    except: raw = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
+            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
 
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
@@ -1150,16 +1142,8 @@ def cargar_pax(data, fname, via_param=1):
             try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else: 
-            try:
-                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-                full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
-            except Exception as e:
-                try: 
-                    dfs = pd.read_html(BytesIO(data), header=None)
-                    full = dfs[0].astype(str)
-                except:
-                    try: full = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
-                    except: full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
+            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+            full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
 
         if full is None or full.empty:
             st.error(f"El archivo {fname} está vacío o no se puede leer.")
@@ -1985,18 +1969,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     with a3: st.metric("📏 Tren-km", f"{km_ac:,.0f}")
     with a4: st.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}")
     
-    if pax_dia_total > 0:
-        # Modo Planificador (ya tenemos el pax_ac de df_inic)
-        pax_ac = int(df_inic['pax_abordo'].sum()) if not df_inic.empty else 0
-    else:
-        # Modo THDR Normal
-        if not df_inic.empty:
-            df_inic_pax = df_inic[df_inic['pax_row_idx'] != -1].drop_duplicates(subset=['pax_row_idx'])
-            pax_ac = int(df_inic_pax['pax_abordo'].sum())
-        else:
-            pax_ac = 0
-        
-    with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_ac:,}")
+    with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_dia_total:,}")
     with a6: st.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
 
     st.divider()
@@ -2312,6 +2285,7 @@ def main():
                 if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
             
         if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
+            st.session_state['simulacion_plan_lista'] = False
             with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                 if modo_plan == "Matriz Sintética":
                     df_sintetico_list = []
@@ -2389,10 +2363,30 @@ def main():
                     
                 df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
                 
-                st.divider()
-                st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
-                
-                render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_sint_final['pax_abordo'].sum()))
+                st.session_state['plan_df_sint_final'] = df_sint_final
+                st.session_state['plan_df_sint_e'] = df_sint_e
+                st.session_state['plan_pax_total'] = int(df_sint_final['pax_abordo'].sum())
+                st.session_state['plan_tipo_dia'] = tipo_dia_plan
+                st.session_state['plan_estacion_anio'] = estacion_anio_plan
+                st.session_state['simulacion_plan_lista'] = True
+
+        if st.session_state.get('simulacion_plan_lista', False):
+            st.divider()
+            st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
+            
+            render_gemelo_digital(
+                st.session_state['plan_df_sint_final'], 
+                st.session_state['plan_df_sint_e'], 
+                active_sers, 
+                f"Planificador: {st.session_state['plan_tipo_dia']} ({st.session_state['plan_estacion_anio'].capitalize()})", 
+                pct_trac, 
+                use_rm, 
+                use_pend, 
+                st.session_state['plan_estacion_anio'], 
+                prefix_key="plan", 
+                gap_vias=gap_vias, 
+                pax_dia_total=st.session_state['plan_pax_total']
+            )
     else:
         tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros (Directo)", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
         
@@ -2428,6 +2422,7 @@ def main():
                     if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
                 
             if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
+                st.session_state['simulacion_plan_lista'] = False
                 with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                     
                     if modo_plan == "Matriz Sintética":
@@ -2506,10 +2501,30 @@ def main():
                         
                     df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
                     
-                    st.divider()
-                    st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
-                    
-                    render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_sint_final['pax_abordo'].sum()))
+                    st.session_state['plan_df_sint_final'] = df_sint_final
+                    st.session_state['plan_df_sint_e'] = df_sint_e
+                    st.session_state['plan_pax_total'] = int(df_sint_final['pax_abordo'].sum())
+                    st.session_state['plan_tipo_dia'] = tipo_dia_plan
+                    st.session_state['plan_estacion_anio'] = estacion_anio_plan
+                    st.session_state['simulacion_plan_lista'] = True
+
+            if st.session_state.get('simulacion_plan_lista', False):
+                st.divider()
+                st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
+                
+                render_gemelo_digital(
+                    st.session_state['plan_df_sint_final'], 
+                    st.session_state['plan_df_sint_e'], 
+                    active_sers, 
+                    f"Planificador: {st.session_state['plan_tipo_dia']} ({st.session_state['plan_estacion_anio'].capitalize()})", 
+                    pct_trac, 
+                    use_rm, 
+                    use_pend, 
+                    st.session_state['plan_estacion_anio'], 
+                    prefix_key="plan", 
+                    gap_vias=gap_vias, 
+                    pax_dia_total=st.session_state['plan_pax_total']
+                )
 
         with tab_mapa:
             if df_all.empty:
