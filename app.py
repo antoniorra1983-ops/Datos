@@ -1367,57 +1367,121 @@ def parsear_planilla_maestra(data, fname):
             eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
             raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
             
+        df = raw.copy()
+        header_idx = -1
+        
+        # 1. Búsqueda inteligente de la fila de encabezados
+        for i in range(min(20, len(df))):
+            row_str = ' '.join(df.iloc[i].fillna('').astype(str).str.upper())
+            if ('SERVICIO' in row_str or 'TREN' in row_str) and ('HORA' in row_str or 'SALIDA' in row_str):
+                header_idx = i
+                break
+                
         viajes = []
-        for i in range(len(raw)):
-            row_vals = raw.iloc[i].fillna('').astype(str).tolist()
-            for c_idx, val in enumerate(row_vals):
-                val = val.strip()
-                if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', val):
-                    t_ini = parse_time_to_mins(val)
-                    if t_ini is None: continue
-                    
-                    tren_val, viaje_val = 0, 0
-                    for offset in range(1, 5):
-                        if c_idx - offset >= 0:
-                            check_val = row_vals[c_idx - offset].strip()
-                            if check_val.isdigit():
-                                if tren_val == 0: tren_val = int(check_val)
-                                elif viaje_val == 0: viaje_val = int(check_val)
-                    
-                    if tren_val == 0 or viaje_val == 0: continue
-                    
-                    es_doble = False
-                    for offset in range(1, 6):
-                        if c_idx + offset < len(row_vals):
-                            check_val = row_vals[c_idx + offset].upper()
-                            if re.match(r'^[12]_[12]$', check_val) and check_val.startswith('2'):
-                                es_doble = True
-                            elif 'MÚLTIPLE' in check_val or 'MULTIPLE' in check_val or 'DOBLE' in check_val:
-                                es_doble = True
+        
+        if header_idx != -1:
+            # Método Robusto: Mapeo de columnas explícito
+            headers = df.iloc[header_idx].fillna('').astype(str).str.upper()
+            col_srv = next((c for c, val in enumerate(headers) if 'SERV' in val or 'TREN' in val), None)
+            col_hora = next((c for c, val in enumerate(headers) if 'HORA' in val or 'SALIDA' in val), None)
+            col_config = next((c for c, val in enumerate(headers) if 'CONF' in val or 'TIPO' in val or 'FORMA' in val), None)
 
-                    via = 1 if viaje_val % 2 == 0 else 2
-                    if via == 1:
-                        km_orig = KM_ACUM[0] 
-                        if tren_val >= 600: km_dest = KM_ACUM[20] 
-                        elif tren_val >= 400: km_dest = KM_ACUM[18] 
-                        else: km_dest = KM_ACUM[14] 
-                    else:
-                        km_dest = KM_ACUM[0] 
-                        if tren_val >= 600: km_orig = KM_ACUM[20] 
-                        elif tren_val >= 400: km_orig = KM_ACUM[18] 
-                        else: km_orig = KM_ACUM[14] 
-                        
-                    ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
-                    nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
+            for i in range(header_idx + 1, len(df)):
+                row = df.iloc[i]
+                if col_hora is None or col_srv is None: break
+                if pd.isna(row.get(col_hora)) or pd.isna(row.get(col_srv)): continue
+
+                hora_str = str(row[col_hora]).strip()
+                srv_str = str(row[col_srv]).strip()
+                config_str = str(row.get(col_config, '')).strip().upper() if col_config is not None else ''
+
+                # Extracción robusta del número de servicio (3 o 4 dígitos)
+                m_srv = re.search(r'(\d{3,4})', srv_str)
+                if not m_srv: continue
+                servicio_num = int(m_srv.group(1))
+
+                t_ini = parse_time_to_mins(hora_str)
+                if t_ini is None: continue
+
+                es_doble = False
+                if 'DOB' in config_str or 'MULT' in config_str or 'MÚLT' in config_str or '2' in config_str:
+                    es_doble = True
+                elif 'SIMP' in config_str or '1' in config_str:
+                    es_doble = False
+                else:
+                    row_full_str = ' '.join(row.fillna('').astype(str).str.upper())
+                    if 'DOBLE' in row_full_str or 'MULTIPLE' in row_full_str or 'MÚLTIPLE' in row_full_str or re.search(r'\b2_[12]\b', row_full_str):
+                        es_doble = True
+
+                via = 1 if servicio_num % 2 == 0 else 2
+                
+                if via == 1:
+                    km_orig = KM_ACUM[0] 
+                    if servicio_num >= 600: km_dest = KM_ACUM[20] 
+                    elif servicio_num >= 400: km_dest = KM_ACUM[18] 
+                    else: km_dest = KM_ACUM[14] 
+                else:
+                    km_dest = KM_ACUM[0] 
+                    if servicio_num >= 600: km_orig = KM_ACUM[20] 
+                    elif servicio_num >= 400: km_orig = KM_ACUM[18] 
+                    else: km_orig = KM_ACUM[14] 
                     
-                    viajes.append({
-                        '_id': f"PLAN_{tren_val}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
-                        'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
-                        'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(tren_val), 'svc_type': ruta,
-                        'maniobra': None
-                    })
-                    break 
+                ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
+                nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
+                
+                viajes.append({
+                    '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
+                    'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
+                    'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
+                    'maniobra': None
+                })
+        else:
+            # Método Fallback: Escaneo de fila dinámica si la estructura no es identificable
+            for i in range(len(raw)):
+                row_vals = raw.iloc[i].fillna('').astype(str).tolist()
+                row_str_upper = ' '.join(row_vals).upper()
+                
+                t_ini = None
+                servicio_num = None
+                
+                for val in row_vals:
+                    val = val.strip()
+                    # Buscar hora
+                    if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', val) and t_ini is None:
+                        t_ini = parse_time_to_mins(val)
+                    # Buscar número de servicio (rango lógico EFE 200-999)
+                    elif val.isdigit() and 200 <= int(val) <= 999 and servicio_num is None:
+                        servicio_num = int(val)
+
+                if t_ini is None or servicio_num is None: continue
+
+                es_doble = False
+                if 'DOBLE' in row_str_upper or 'MULTIPLE' in row_str_upper or 'MÚLTIPLE' in row_str_upper or re.search(r'\b2_[12]\b', row_str_upper):
+                    es_doble = True
+
+                via = 1 if servicio_num % 2 == 0 else 2
+                
+                if via == 1:
+                    km_orig = KM_ACUM[0] 
+                    if servicio_num >= 600: km_dest = KM_ACUM[20] 
+                    elif servicio_num >= 400: km_dest = KM_ACUM[18] 
+                    else: km_dest = KM_ACUM[14] 
+                else:
+                    km_dest = KM_ACUM[0] 
+                    if servicio_num >= 600: km_orig = KM_ACUM[20] 
+                    elif servicio_num >= 400: km_orig = KM_ACUM[18] 
+                    else: km_orig = KM_ACUM[14] 
                     
+                ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
+                nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
+                
+                viajes.append({
+                    '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
+                    'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
+                    'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
+                    'maniobra': None
+                })
+                
         df_viajes = pd.DataFrame(viajes)
         if not df_viajes.empty: df_viajes = df_viajes.drop_duplicates(subset=['_id'])
         return df_viajes, "ok"
