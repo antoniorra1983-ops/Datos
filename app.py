@@ -152,8 +152,8 @@ FLOTA = {
         "davis_A"      : 1615.00, 
         "davis_B"      : 0.00,
         "davis_C"      : 0.5458,     
-        "f_trac_max_kn": 58.274,   
-        "f_freno_max_kn": 52.976,  
+        "f_trac_max_kn": 110.0,   
+        "f_freno_max_kn": 105.0,  
         "p_max_kw"     : 720.0,
         "p_freno_max_kw": 600.0,
         "aux_kw"       : 46.0      
@@ -172,8 +172,8 @@ FLOTA = {
         "davis_A"      : 1440.60, 
         "davis_B"      : 0.00,
         "davis_C"      : 0.35,     
-        "f_trac_max_kn": 65.0,   
-        "f_freno_max_kn": 55.0,  
+        "f_trac_max_kn": 115.0,   
+        "f_freno_max_kn": 110.0,  
         "p_max_kw"     : 1040.0,
         "p_freno_max_kw": 800.0,
         "aux_kw"       : 55.0      
@@ -2205,7 +2205,7 @@ def main():
         st.divider()
         st.subheader("⚙️ Parámetros de Simulación")
         use_rm      =st.checkbox("🚦 Velocidades RM",value=False)
-        pct_trac    =st.slider("⚙️ % Tracción Nominal",30,100,75,5)
+        pct_trac    =st.slider("⚙️ % Tracción Nominal",30,100,90,5)
         use_pend    =st.toggle("⛰️ Pendientes Físicas",value=True)
         use_regen   =st.toggle("⚡ Activar Regeneración",value=True)
         tipo_regen  =st.radio("Modelo de Regeneración", ["Físico (Load Flow / Squeeze Control)", "Probabilístico (Headway Real THDR)"])
