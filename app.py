@@ -17,116 +17,49 @@ st.set_page_config(page_title="Simulador MERVAL", layout="wide", page_icon="🗺
 # =============================================================================
 # 1. INFRAESTRUCTURA, RED Y CONSTANTES GLOBALES
 # =============================================================================
-ESTACIONES = [
-    'Puerto','Bellavista','Francia','Baron','Portales','Recreo','Miramar',
-    'Viña del Mar','Hospital','Chorrillos','El Salto','Valencia','Quilpue',
-    'El Sol','El Belloto','Las Americas','La Concepcion','Villa Alemana',
-    'Sargento Aldea','Peñablanca','Limache'
-]
-EC = ['PU','BE','FR','BA','PO','RE','MI','VM','HO','CH',
-      'ES','VAL','QU','SO','EB','AM','CO','VL','SA','PE','LI']
-PAX_COLS = ['PUE','BEL','FRA','BAR','POR','REC','MIR','VIN','HOS','CHO',
-            'SLT','VAL','QUI','SOL','BTO','AME','CON','VAM','SGA','PEN','LIM']
+ESTACIONES = ['Puerto','Bellavista','Francia','Baron','Portales','Recreo','Miramar','Viña del Mar','Hospital','Chorrillos','El Salto','Valencia','Quilpue','El Sol','El Belloto','Las Americas','La Concepcion','Villa Alemana','Sargento Aldea','Peñablanca','Limache']
+EC = ['PU','BE','FR','BA','PO','RE','MI','VM','HO','CH','ES','VAL','QU','SO','EB','AM','CO','VL','SA','PE','LI']
+PAX_COLS = ['PUE','BEL','FRA','BAR','POR','REC','MIR','VIN','HOS','CHO','SLT','VAL','QUI','SOL','BTO','AME','CON','VAM','SGA','PEN','LIM']
 PAX_IDX  = {c: i for i, c in enumerate(PAX_COLS)}
 
 KM_TRAMO = [0.7,0.7,0.8,1.7,2.1,1.4,0.9,0.9,1.0,1.5,7.4,2.3,1.9,2.0,1.1,1.2,0.9,0.6,1.3,12.73]
 KM_ACUM  = [0.0]
-for _k in KM_TRAMO: 
-    KM_ACUM.append(round(KM_ACUM[-1]+_k, 2))
-KM_TOTAL = KM_ACUM[-1]
-N_EST    = len(ESTACIONES)
+for _k in KM_TRAMO: KM_ACUM.append(round(KM_ACUM[-1]+_k, 2))
+KM_TOTAL, N_EST = KM_ACUM[-1], len(ESTACIONES)
 
 _ELEV_KM = [0.0, 0.7, 1.4, 2.2, 3.9, 6.0, 7.4, 8.3, 9.2, 10.2, 11.7, 19.1, 21.4, 23.3, 25.3, 26.4, 27.6, 28.5, 29.1, 30.4, 43.13]
 _ELEV_M  = [12, 10, 10, 10, 18, 15, 12, 15, 35, 50, 55, 88, 122, 132, 142, 148, 155, 162, 175, 198, 216]
 
-EST_LATS = [-33.03846,-33.04295,-33.04405,-33.04241,-33.03284,-33.02703,-33.02496,
-            -33.02642,-33.02868,-33.03300,-33.04113,-33.04031,-33.04532,-33.03966,
-            -33.04311,-33.04385,-33.04158,-33.04258,-33.04203,-33.04019,-32.98427]
-EST_LONS = [-71.62709,-71.62088,-71.61244,-71.60567,-71.59123,-71.57501,-71.56160,
-            -71.55180,-71.54315,-71.53346,-71.52104,-71.46888,-71.44453,-71.42884,
-            -71.40651,-71.37354,-71.36594,-71.35302,-71.27771]
+EST_LATS = [-33.03846,-33.04295,-33.04405,-33.04241,-33.03284,-33.02703,-33.02496,-33.02642,-33.02868,-33.03300,-33.04113,-33.04031,-33.04532,-33.03966,-33.04311,-33.04385,-33.04158,-33.04258,-33.04203,-33.04019,-32.98427]
+EST_LONS = [-71.62709,-71.62088,-71.61244,-71.60567,-71.59123,-71.57501,-71.56160,-71.55180,-71.54315,-71.53346,-71.52104,-71.46888,-71.44453,-71.42884,-71.40651,-71.37354,-71.36594,-71.35302,-71.27771]
 
-SER_DATA = [
-    (KM_ACUM[4] + 1.0, "SER PO"),
-    (KM_ACUM[10] + 1.0, "SER ES"),
-    (KM_ACUM[14] + 0.2, "SER EB"),
-    (KM_ACUM[17] + 0.2, "SER VA")
-]
+SER_DATA = [(KM_ACUM[4] + 1.0, "SER PO"), (KM_ACUM[10] + 1.0, "SER ES"), (KM_ACUM[14] + 0.2, "SER EB"), (KM_ACUM[17] + 0.2, "SER VA")]
 SEAT_KM = KM_ACUM[13] + 1.0
 
 SER_CAPACITY_KW = {"SER PO": 3000.0, "SER ES": 3000.0, "SER EB": 4500.0, "SER VA": 3000.0}
-SEAT_CAPACITY_KW = 20000.0 
+SEAT_CAPACITY_KW, Z_EFF_44KV, R_AC_44KV, V_NOMINAL_AC = 20000.0, 0.28, 0.17, 44000.0
+PAX_KG, DWELL_DEF, DAVIS_E_N_PERMIL, ETA_TRAC_SISTEMA, ETA_REGEN_NETA = 75.0, 8.0, 9.81, 0.92, 0.72
+LAMBDA_REGEN_KM, ETA_SER_RECTIFICADOR, ETA_MAX, V_NOMINAL_DC, V_SQUEEZE_WARN = 5.0, 0.96, 0.70, 3000.0, 2850.0
 
-Z_EFF_44KV = 0.28  
-R_AC_44KV = 0.17   
-V_NOMINAL_AC = 44000.0
-
-PAX_KG    = 75.0
-DWELL_DEF = 8.0  
-DAVIS_E_N_PERMIL = 9.81
-ETA_TRAC_SISTEMA = 0.92  
-ETA_REGEN_NETA   = 0.72   
-LAMBDA_REGEN_KM  = 5.0     
-ETA_SER_RECTIFICADOR = 0.96 
-ETA_MAX   = 0.70
-V_NOMINAL_DC = 3000.0
-V_SQUEEZE_WARN = 2850.0
-
-# --- PERFILES DE AUXILIARES DINÁMICOS ---
 _AUX_HVAC_HORA = {
     "verano": [0.60,0.55,0.55,0.55,0.58,0.65, 0.72,0.78,0.83,0.88,0.92,0.95, 0.98,1.00,1.00,0.98,0.95,0.90, 0.85,0.80,0.75,0.70,0.67,0.63],
     "otoño": [0.40,0.38,0.37,0.37,0.38,0.42, 0.48,0.52,0.56,0.60,0.63,0.65, 0.66,0.66,0.65,0.63,0.60,0.57, 0.53,0.50,0.47,0.44,0.42,0.41],
     "invierno": [0.72,0.70,0.68,0.68,0.70,0.74, 0.80,0.84,0.86,0.85,0.82,0.78, 0.75,0.73,0.72,0.73,0.76,0.80, 0.82,0.80,0.78,0.76,0.74,0.73],
     "primavera": [0.42,0.40,0.39,0.39,0.41,0.46, 0.53,0.58,0.63,0.68,0.72,0.75, 0.77,0.78,0.77,0.74,0.70,0.66, 0.61,0.57,0.53,0.49,0.46,0.44],
 }
-_FRAC_HVAC = 0.70
-_FRAC_BASE = 0.30
-_FACTOR_DWELL_COMPRESOR = 1.08
-
-SEGMENTOS_ELECTRICOS = [
-    {"nombre":"SS1 Puerto–El Salto",  "km_ini":0.0,  "km_fin":12.0},
-    {"nombre":"SS2 El Salto–El Sol",  "km_ini":12.0, "km_fin":24.0},
-    {"nombre":"SS3 El Sol–Limache",   "km_ini":24.0, "km_fin":43.13},
-]
+_FRAC_HVAC, _FRAC_BASE, _FACTOR_DWELL_COMPRESOR = 0.70, 0.30, 1.08
 
 SPEED_PROFILE = [
-    (90.6,122.3,31.7,0,0),(122.3,215.3,93.0,52,43),(215.3,372.6,157.3,52,43),
-    (372.6,577.2,204.6,52,43),(577.2,781.6,204.4,52,43),(781.6,1043.0,261.4,52,43),
-    (1043.0,1377.0,334.0,52,43),(1377.0,1767.0,390.0,52,43),(1767.0,2202.0,435.0,42,34),
-    (2202.0,2592.0,390.0,42,34),(2592.0,2960.5,368.5,74,60),(2960.5,3337.0,376.5,74,60),
-    (3337.0,3448.4,111.4,74,60),(3448.4,3938.4,490.0,74,60),(3938.4,4328.4,390.0,66,54),
-    (4328.4,4758.4,430.0,74,60),(4758.4,5188.4,430.0,52,43),(5188.4,5618.4,430.0,52,43),
-    (5618.4,6034.4,416.0,52,43),(6034.4,6416.4,382.0,52,43),(6416.4,6913.0,496.6,74,60),
-    (6913.0,7405.0,492.0,66,54),(7405.0,7816.4,411.4,66,54),(7816.4,8308.4,492.0,66,54),
-    (8308.4,8695.0,386.6,66,54),(8695.0,9209.8,514.8,66,54),(9209.8,9622.2,412.4,66,54),
-    (9622.2,10171.1,548.9,66,54),(10171.1,10530.5,359.4,52,43),(10530.5,11020.5,490.0,74,60),
-    (11020.5,11513.5,493.0,74,60),(11513.5,11920.0,406.5,74,60),(11920.0,12088.4,168.4,74,60),
-    (12088.4,12176.0,87.6,74,60),(12176.0,12578.0,402.0,74,60),(12578.0,12724.8,146.8,74,60),
-    (12724.8,12861.7,136.9,74,60),(12861.7,13359.7,498.0,120,99),(13359.7,13847.7,488.0,120,99),
-    (13847.7,14337.7,490.0,74,60),(14337.7,14828.7,491.0,52,43),(14828.7,15325.7,497.0,52,43),
-    (15325.7,15823.7,498.0,52,43),(15823.7,16321.7,498.0,52,43),(16321.7,16812.7,491.0,52,43),
-    (16812.7,17317.7,505.0,52,43),(17317.7,17809.7,492.0,52,43),(17809.7,18301.7,492.0,74,60),
-    (18301.7,18788.7,487.0,74,60),(18788.7,19281.7,493.0,74,60),(19281.7,19772.7,491.0,74,60),
-    (19772.7,20265.7,493.0,74,60),(20265.7,20754.7,489.0,74,60),(20754.7,21250.7,496.0,66,54),
-    (21250.7,21337.7,87.0,52,43),(21337.7,21632.1,294.4,52,43),(21632.1,21739.7,107.6,74,60),
-    (21739.7,22061.7,322.0,74,60),(22061.7,22251.2,189.5,102,84),(22251.2,22357.7,106.5,102,84),
-    (22357.7,22812.7,455.0,74,60),(22812.7,23265.7,453.0,74,60),(23265.7,23660.7,395.0,74,60),
-    (23660.7,24155.7,495.0,102,84),(24155.7,24650.7,495.0,102,84),(24650.7,25145.7,495.0,74,60),
-    (25145.7,25343.7,198.0,74,60),(25343.7,25483.0,139.3,74,60),(25483.0,25725.0,242.0,74,60),
-    (25725.0,26219.0,494.0,74,60),(26219.0,26614.0,395.0,74,60),(26614.0,27025.5,411.5,74,60),
-    (27025.5,27457.0,431.5,74,60),(27457.0,27837.0,380.0,74,60),(27837.0,28317.0,480.0,74,60),
-    (28317.0,28712.0,395.0,74,60),(28712.0,29180.0,468.0,74,60),(29180.0,29565.0,385.0,74,60),
-    (29565.0,29817.0,252.0,74,60),(29817.0,30122.0,305.0,74,60),(30122.0,30464.0,342.0,66,54),
-    (30464.0,30849.0,385.0,74,60),(30849.0,31332.6,483.6,102,84),(31332.6,31817.6,485.0,120,99),
-    (31817.6,32307.6,490.0,120,99),(32307.6,32802.6,495.0,120,99),(32802.6,33297.6,495.0,120,99),
-    (33297.6,33792.6,495.0,120,99),(33792.6,34282.6,490.0,120,99),(34282.6,34767.6,485.0,120,99),
-    (34767.6,35246.6,479.0,120,99),(35246.6,35725.3,478.7,120,99),(35725.3,36223.3,498.0,102,84),
-    (36223.3,36704.5,481.2,74,60),(36704.5,37194.0,489.5,74,60),(37194.0,37683.5,489.5,74,60),
-    (37683.5,38172.0,488.5,102,84),(38172.0,38665.3,493.3,120,99),(38665.3,39153.0,487.7,120,99),
-    (39153.0,39642.4,489.4,120,99),(39642.4,40134.0,491.6,120,99),(40134.0,40621.8,487.8,120,99),
-    (40621.8,41100.8,479.0,120,99),(41100.8,41601.5,500.7,120,99),(41601.5,42089.1,487.6,102,84),
-    (42089.1,42588.5,499.4,66,54),(42588.5,42785.5,197.0,66,54),(42785.5,43057.2,271.7,42,34),
-    (43057.2,43273.1,215.9,42,34),(43273.1,43305.0,31.9,0,0)
+    (90.6,122.3,31.7,0,0),(122.3,215.3,93.0,52,43),(215.3,372.6,157.3,52,43),(372.6,577.2,204.6,52,43),(577.2,781.6,204.4,52,43),(781.6,1043.0,261.4,52,43),(1043.0,1377.0,334.0,52,43),(1377.0,1767.0,390.0,52,43),(1767.0,2202.0,435.0,42,34),(2202.0,2592.0,390.0,42,34),(2592.0,2960.5,368.5,74,60),(2960.5,3337.0,376.5,74,60),
+    (3337.0,3448.4,111.4,74,60),(3448.4,3938.4,490.0,74,60),(3938.4,4328.4,390.0,66,54),(4328.4,4758.4,430.0,74,60),(4758.4,5188.4,430.0,52,43),(5188.4,5618.4,430.0,52,43),(5618.4,6034.4,416.0,52,43),(6034.4,6416.4,382.0,52,43),(6416.4,6913.0,496.6,74,60),(6913.0,7405.0,492.0,66,54),(7405.0,7816.4,411.4,66,54),(7816.4,8308.4,492.0,66,54),
+    (8308.4,8695.0,386.6,66,54),(8695.0,9209.8,514.8,66,54),(9209.8,9622.2,412.4,66,54),(9622.2,10171.1,548.9,66,54),(10171.1,10530.5,359.4,52,43),(10530.5,11020.5,490.0,74,60),(11020.5,11513.5,493.0,74,60),(11513.5,11920.0,406.5,74,60),(11920.0,12088.4,168.4,74,60),(12088.4,12176.0,87.6,74,60),(12176.0,12578.0,402.0,74,60),
+    (12578.0,12724.8,146.8,74,60),(12724.8,12861.7,136.9,74,60),(12861.7,13359.7,498.0,120,99),(13359.7,13847.7,488.0,120,99),(13847.7,14337.7,490.0,74,60),(14337.7,14828.7,491.0,52,43),(14828.7,15325.7,497.0,52,43),(15325.7,15823.7,498.0,52,43),(15823.7,16321.7,498.0,52,43),(16321.7,16812.7,491.0,52,43),(16812.7,17317.7,505.0,52,43),
+    (17317.7,17809.7,492.0,52,43),(17809.7,18301.7,492.0,74,60),(18301.7,18788.7,487.0,74,60),(18788.7,19281.7,493.0,74,60),(19281.7,19772.7,491.0,74,60),(19772.7,20265.7,493.0,74,60),(20265.7,20754.7,489.0,74,60),(20754.7,21250.7,496.0,66,54),(21250.7,21337.7,87.0,52,43),(21337.7,21632.1,294.4,52,43),(21632.1,21739.7,107.6,74,60),
+    (21739.7,22061.7,322.0,74,60),(22061.7,22251.2,189.5,102,84),(22251.2,22357.7,106.5,102,84),(22357.7,22812.7,455.0,74,60),(22812.7,23265.7,453.0,74,60),(23265.7,23660.7,395.0,74,60),(23660.7,24155.7,495.0,102,84),(24155.7,24650.7,495.0,102,84),(24650.7,25145.7,495.0,74,60),(25145.7,25343.7,198.0,74,60),(25343.7,25483.0,139.3,74,60),
+    (25483.0,25725.0,242.0,74,60),(25725.0,26219.0,494.0,74,60),(26219.0,26614.0,395.0,74,60),(26614.0,27025.5,411.5,74,60),(27025.5,27457.0,431.5,74,60),(27457.0,27837.0,380.0,74,60),(27837.0,28317.0,480.0,74,60),(28317.0,28712.0,395.0,74,60),(28712.0,29180.0,468.0,74,60),(29180.0,29565.0,385.0,74,60),(29565.0,29817.0,252.0,74,60),
+    (29817.0,30122.0,305.0,74,60),(30122.0,30464.0,342.0,66,54),(30464.0,30849.0,385.0,74,60),(30849.0,31332.6,483.6,102,84),(31332.6,31817.6,485.0,120,99),(31817.6,32307.6,490.0,120,99),(32307.6,32802.6,495.0,120,99),(32802.6,33297.6,495.0,120,99),(33297.6,33792.6,495.0,120,99),(33792.6,34282.6,490.0,120,99),(34282.6,34767.6,485.0,120,99),
+    (34767.6,35246.6,479.0,120,99),(35246.6,35725.3,478.7,120,99),(35725.3,36223.3,498.0,102,84),(36223.3,36704.5,481.2,74,60),(36704.5,37194.0,489.5,74,60),(37194.0,37683.5,489.5,74,60),(37683.5,38172.0,488.5,102,84),(38172.0,38665.3,493.3,120,99),(38665.3,39153.0,487.7,120,99),(39153.0,39642.4,489.4,120,99),(39642.4,40134.0,491.6,120,99),
+    (40134.0,40621.8,487.8,120,99),(40621.8,41100.8,479.0,120,99),(41100.8,41601.5,500.7,120,99),(41601.5,42089.1,487.6,102,84),(42089.1,42588.5,499.4,66,54),(42588.5,42785.5,197.0,66,54),(42785.5,43057.2,271.7,42,34),(43057.2,43273.1,215.9,42,34),(43273.1,43305.0,31.9,0,0)
 ]
 
 # =============================================================================
@@ -134,63 +67,25 @@ SPEED_PROFILE = [
 # =============================================================================
 FLOTA = {
     "XT-100": {
-        "tara_t"       : 86.1, 
-        "m_iner_t"     : 7.20, 
-        "coches"       : 2, 
-        "cap_sent"     : 94, 
-        "cap_max"      : 398,
-        "n_motores"    : 4, 
-        "a_max_ms2"    : 1.0, 
-        "a_freno_ms2"  : 1.2,
-        "v_freno_min"  : 3.81, 
-        "eta_motor"    : 0.92, 
-        "davis_A"      : 1615.00, 
-        "davis_B"      : 0.00,
-        "davis_C"      : 0.5458,     
-        "f_trac_max_kn": 110.0,   
-        "f_freno_max_kn": 105.0,  
-        "p_max_kw"     : 720.0,
-        "p_freno_max_kw": 600.0,
-        "aux_kw"       : 46.0      
+        "tara_t": 86.1, "m_iner_t": 7.20, "coches": 2, "cap_max": 398,
+        "n_motores": 4, "a_max_ms2": 1.0, "a_freno_ms2": 1.2, "v_freno_min": 3.81, "eta_motor": 0.92, 
+        "davis_A": 1615.00, "davis_B": 0.00, "davis_C": 0.5458,     
+        "f_trac_max_kn": 110.0, "f_freno_max_kn": 105.0,  
+        "p_max_kw": 720.0, "p_freno_max_kw": 600.0, "aux_kw": 46.0      
     },
     "XT-M": {
-        "tara_t"       : 95.0, 
-        "m_iner_t"     : 8.0, 
-        "coches"       : 2, 
-        "cap_sent"     : 94, 
-        "cap_max"      : 376,
-        "n_motores"    : 4, 
-        "a_max_ms2"    : 1.0, 
-        "a_freno_ms2"  : 1.2,
-        "v_freno_min"  : 3.81, 
-        "eta_motor"    : 0.92, 
-        "davis_A"      : 1440.60, 
-        "davis_B"      : 0.00,
-        "davis_C"      : 0.35,     
-        "f_trac_max_kn": 115.0,   
-        "f_freno_max_kn": 110.0,  
-        "p_max_kw"     : 1040.0,
-        "p_freno_max_kw": 800.0,
-        "aux_kw"       : 55.0      
+        "tara_t": 95.0, "m_iner_t": 8.0, "coches": 2, "cap_max": 376,
+        "n_motores": 4, "a_max_ms2": 1.0, "a_freno_ms2": 1.2, "v_freno_min": 3.81, "eta_motor": 0.92, 
+        "davis_A": 1440.60, "davis_B": 0.00, "davis_C": 0.35,     
+        "f_trac_max_kn": 115.0, "f_freno_max_kn": 110.0,  
+        "p_max_kw": 1040.0, "p_freno_max_kw": 800.0, "aux_kw": 55.0      
     },
     "SFE": {
-        "tara_t"       : 141.0, 
-        "m_iner_t"     : 11.2, 
-        "coches"       : 3, 
-        "cap_max"      : 780,
-        "n_motores"    : 8,        
-        "a_max_ms2"    : 1.02,
-        "a_freno_ms2"  : 1.30, 
-        "v_freno_min"  : 3.81,
-        "eta_motor"    : 0.94,     
-        "davis_A"      : 2480.00, 
-        "davis_B"      : 0.00,
-        "davis_C"      : 0.4714,     
-        "f_trac_max_kn": 220.0,   
-        "f_freno_max_kn": 190.0,  
-        "p_max_kw"     : 2400.0,
-        "p_freno_max_kw": 2800.0,
-        "aux_kw"       : 190.0     
+        "tara_t": 141.0, "m_iner_t": 11.2, "coches": 3, "cap_max": 780,
+        "n_motores": 8, "a_max_ms2": 1.02, "a_freno_ms2": 1.30, "v_freno_min": 3.81, "eta_motor": 0.94,     
+        "davis_A": 2480.00, "davis_B": 0.00, "davis_C": 0.4714,     
+        "f_trac_max_kn": 220.0, "f_freno_max_kn": 190.0,  
+        "p_max_kw": 2400.0, "p_freno_max_kw": 2800.0, "aux_kw": 190.0      
     },
 }
 
@@ -206,9 +101,7 @@ def mins_to_time_str(mins):
         m_val = float(mins)
         while m_val >= 1440: m_val -= 1440
         while m_val < 0: m_val += 1440
-        h = int(m_val // 60)
-        m = int(m_val % 60)
-        s = int(round((m_val * 60) % 60))
+        h = int(m_val // 60); m = int(m_val % 60); s = int(round((m_val * 60) % 60))
         if s == 60: s = 0; m += 1
         if m == 60: m = 0; h += 1
         return f"{h:02d}:{m:02d}:{s:02d}"
@@ -221,10 +114,8 @@ def parse_time_to_mins(val):
     if ' ' in sv: sv = sv.split(' ')[-1]
     m = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', sv)
     if m:
-        h = int(m.group(1))
-        m_min = int(m.group(2))
-        s_sec = int(m.group(3)) / 60.0 if m.group(3) else 0.0
-        return h * 60.0 + m_min + s_sec
+        h = int(m.group(1)); m_min = int(m.group(2)); s_sec = int(m.group(3)) if m.group(3) else 0
+        return h * 60.0 + m_min + s_sec / 60.0
     try:
         f = float(sv)
         if f < 1.0: return f * 1440.0
@@ -235,8 +126,9 @@ def parse_time_to_mins(val):
 def parse_excel_date(val):
     if pd.isna(val): return None
     if isinstance(val, (datetime, pd.Timestamp)): return val.strftime('%Y-%m-%d')
-    v_str = re.sub(r'\.0+$', '', str(val).strip()).split(' ')[0]
+    v_str = str(val).strip()
     if not v_str or v_str.lower() in ['nan', 'none', 'fecha', 'date', 'nat']: return None
+    v_str = re.sub(r'\.0+$', '', v_str).split(' ')[0]
     
     if v_str.isdigit():
         v_int = int(v_str)
@@ -247,33 +139,49 @@ def parse_excel_date(val):
             s_pad = v_str.zfill(6)
             try:
                 d, m, y = int(s_pad[0:2]), int(s_pad[2:4]), int(s_pad[4:6])
-                if 1 <= d <= 31 and 1 <= m <= 12: return f"{2000+y if y<100 else y:04d}-{m:02d}-{d:02d}"
+                if 1 <= d <= 31 and 1 <= m <= 12:
+                    y_full = 2000 + y if y < 100 else y
+                    return f"{y_full:04d}-{m:02d}-{d:02d}"
             except: pass
             
-    for pat in [r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', r'\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b']:
-        m_dt = re.search(pat, v_str)
-        if m_dt:
-            if len(m_dt.group(1)) == 4: 
-                y, m, d = int(m_dt.group(1)), int(m_dt.group(2)), int(m_dt.group(3))
-            else: 
-                d, m, y = int(m_dt.group(1)), int(m_dt.group(2)), int(m_dt.group(3))
-            if m > 12 and d <= 12: d, m = m, d
-            if 1 <= d <= 31 and 1 <= m <= 12: return f"{y:04d}-{m:02d}-{d:02d}"
+    m1 = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', v_str)
+    if m1:
+        d, m, y = int(m1.group(1)), int(m1.group(2)), int(m1.group(3))
+        if m > 12 and d <= 12: d, m = m, d  
+        if 1 <= d <= 31 and 1 <= m <= 12: return f"{y:04d}-{m:02d}-{d:02d}"
+            
+    m2 = re.search(r'\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b', v_str)
+    if m2:
+        y, m, d = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
+        if m > 12 and d <= 12: d, m = m, d
+        if 1 <= d <= 31 and 1 <= m <= 12: return f"{y:04d}-{m:02d}-{d:02d}"
     return None
 
 def clean_primary_key(x):
-    s = re.sub(r'[^A-Z0-9]', '', re.sub(r'\.0+$', '', str(x).strip().upper())) if pd.notna(x) else ''
-    return s.lstrip('0') if s not in ['NAN', ''] else ''
+    if pd.isna(x): return ''
+    s = str(x).strip().upper() 
+    if s == 'NAN' or s == '': return ''
+    s = re.sub(r'\.0+$', '', s) 
+    s = re.sub(r'[^A-Z0-9]', '', s) 
+    return s.lstrip('0') 
 
 def clean_id(x):
     try:
-        nums = re.findall(r'\d+', str(x).strip().lower().replace(".0", ""))
-        return str(int(nums[0])) if nums else str(x).strip().upper()
-    except: return str(x).strip().upper()
+        val_str = str(x).strip().lower().replace(".0", "")
+        nums = re.findall(r'\d+', val_str)
+        if nums: return str(int(nums[0]))
+        return val_str.upper()
+    except:
+        return str(x).strip().upper()
 
 def clean_pax_number(x):
-    s = re.sub(r'[^\d]', '', re.sub(r'\.0+$', '', str(x).strip().lower()).replace('.', '').replace(',', '')) if pd.notna(x) else ''
-    try: return int(s) if s and s != 'nan' else 0
+    if pd.isna(x): return 0
+    s = str(x).strip().lower()
+    if s == '' or s == 'nan': return 0
+    s = re.sub(r'\.0+$', '', s)
+    s = s.replace('.', '').replace(',', '')
+    s = re.sub(r'[^\d]', '', s)
+    try: return int(s) if s else 0
     except: return 0
 
 # =============================================================================
@@ -288,38 +196,63 @@ def km_to_ec(km, tol=1.5):
     idx = int(np.argmin(dists))
     return EC[idx] if dists[idx] <= tol else f"{km:.1f}km"
 
-def svc_label(km_orig, km_dest): 
+def svc_label(km_orig, km_dest):
     return f"{km_to_ec(km_orig)}-{km_to_ec(km_dest)}"
 
 def extraer_fecha_segura(df_raw, fname):
     for pat in [r'\b(\d{1,2})[-_\.](\d{1,2})[-_\.](\d{4})\b', r'\b(\d{4})[-_\.](\d{1,2})[-_\.](\d{1,2})\b']:
         m = re.search(pat, str(fname))
         if m:
-            if len(m.group(1)) == 4:
-                y, m_val, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            else:
-                d, m_val, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if m_val > 12 and d <= 12: d, m_val = m_val, d
-            if 1 <= d <= 31 and 1 <= m_val <= 12: return f"{y:04d}-{m_val:02d}-{d:02d}"
+            if len(m.group(1)) == 4: y, mon, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            else: d, mon, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if mon > 12 and d <= 12: d, mon = mon, d
+            if 1 <= d <= 31 and 1 <= mon <= 12: return f"{y:04d}-{mon:02d}-{d:02d}"
 
+    s_fname = re.sub(r'\D', '', str(fname))
+    for i in range(len(s_fname) - 7):
+        match = s_fname[i:i+8]
+        d, mon, y = int(match[:2]), int(match[2:4]), int(match[4:])
+        if 1 <= d <= 31 and 1 <= mon <= 12 and 2000 <= y <= 2100: return f"{y:04d}-{mon:02d}-{d:02d}"
+        y2, mon2, d2 = int(match[:4]), int(match[4:6]), int(match[6:])
+        if 1 <= d2 <= 31 and 1 <= mon2 <= 12 and 2000 <= y2 <= 2100: return f"{y2:04d}-{mon2:02d}-{d2:02d}"
+        
+    for i in range(len(s_fname) - 5):
+        match = s_fname[i:i+6]
+        d, mon, y = int(match[:2]), int(match[2:4]), int(match[4:])
+        if 1 <= d <= 31 and 1 <= mon <= 12 and 20 <= y <= 35: return f"{2000+y:04d}-{mon:02d}-{d:02d}"
+            
     for i in range(min(50, len(df_raw))):
-        row_str = ' '.join([str(x).strip() for x in df_raw.iloc[i].values if pd.notna(x)])
-        for pat in [r'\b(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})\b', r'\b(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{4})\b']:
-            m_dt = re.search(pat, row_str)
-            if m_dt:
-                if len(m_dt.group(1)) == 4:
-                    y, m_val, d = int(m_dt.group(1)), int(m_dt.group(2)), int(m_dt.group(3))
-                else:
-                    d, m_val, y = int(m_dt.group(1)), int(m_dt.group(2)), int(m_dt.group(3))
-                if m_val > 12 and d <= 12: d, m_val = m_val, d
-                if 1 <= d <= 31 and 1 <= m_val <= 12: return f"{y:04d}-{m_val:02d}-{d:02d}"
+        row_vals = [str(x).strip() for x in df_raw.iloc[i].values if pd.notna(x)]
+        row_str = ' '.join(row_vals)
+        m_dt = re.search(r'\b(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})\b', row_str)
+        if m_dt:
+            y, mon, d = int(m_dt.group(1)), int(m_dt.group(2)), int(m_dt.group(3))
+            if 1 <= d <= 31 and 1 <= mon <= 12: return f"{y:04d}-{mon:02d}-{d:02d}"
+        m_d = re.search(r'\b(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{4})\b', row_str)
+        if m_d:
+            d, mon, y = int(m_d.group(1)), int(m_d.group(2)), int(m_d.group(3))
+            if mon > 12 and d <= 12: d, mon = mon, d
+            if 1 <= d <= 31 and 1 <= mon <= 12: return f"{y:04d}-{mon:02d}-{d:02d}"
+        m_d2 = re.search(r'\b(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{2})\b', row_str)
+        if m_d2 and not row_str.replace(".", "").isdigit():
+            d, mon, y = int(m_d2.group(1)), int(m_d2.group(2)), int(m_d2.group(3))
+            if mon > 12 and d <= 12: d, mon = mon, d
+            if 1 <= d <= 31 and 1 <= mon <= 12: return f"{2000+y:04d}-{mon:02d}-{d:02d}"
+        for val in row_vals:
+            val_clean = val.split('.')[0]
+            if val_clean.isdigit() and 40000 <= int(val_clean) <= 60000:
+                try: return (date(1899, 12, 30) + timedelta(days=int(val_clean))).strftime('%Y-%m-%d')
+                except: pass
     return "2026-01-01"
 
 def make_unique(df):
     if df.empty: return df
     cols = pd.Series(df.columns)
-    for dup in cols[cols.duplicated()].unique(): 
-        cols[cols==dup] = [f"{dup}_{i}" if i else dup for i in range(sum(cols==dup))]
+    for dup in cols[cols.duplicated()].unique():
+        dup_indices = cols[cols == dup].index
+        for i, idx in enumerate(dup_indices):
+            if i != 0:
+                cols.loc[idx] = f"{dup}_{i}"
     df.columns = cols
     return df
 
@@ -366,23 +299,20 @@ def _build_profile(use_rm, via):
 
 _PROF = {(v, r): _build_profile(r, v) for v in [1, 2] for r in [False, True]}
 _PROF_SORTED = {}
-for k, v in _PROF.items(): 
+for k, v in _PROF.items():
     if k[0] == 1: _PROF_SORTED[k] = (v[0], v[1])
     else: _PROF_SORTED[k] = (v[0][::-1].copy(), v[1][::-1].copy())
 
-_VEL_ARRAY_NORM = np.zeros(45000, dtype=float)
-_VEL_ARRAY_RM = np.zeros(45000, dtype=float)
+_VEL_ARRAY_NORM, _VEL_ARRAY_RM = np.zeros(45000, dtype=float), np.zeros(45000, dtype=float)
 for ki, kf, _, vn, vr in SPEED_PROFILE:
-    start_idx = int(ki)
-    end_idx = min(int(kf) + 1, 45000)
+    start_idx, end_idx = int(ki), min(int(kf) + 1, 45000)
     _VEL_ARRAY_NORM[start_idx:end_idx] = vn
     _VEL_ARRAY_RM[start_idx:end_idx] = vr
 
 def vel_at_km(km_km, via, use_rm):
     idx = int(km_km * 1000.0)
-    if 0 <= idx < 45000:
-        return _VEL_ARRAY_RM[idx] if use_rm else _VEL_ARRAY_NORM[idx]
-    return 0.0
+    if idx < 0 or idx >= 45000: return 0.0
+    return _VEL_ARRAY_RM[idx] if use_rm else _VEL_ARRAY_NORM[idx]
 
 def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodos=None, t_arr=None):
     if nodos is not None and len(nodos) >= 2:
@@ -392,7 +322,8 @@ def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodo
         idx = np.searchsorted(t_arr, t)
         t_A, k_A = nodos[idx-1]
         t_B, k_B = nodos[idx]
-        if t_A == t_B or k_A == k_B: return k_A 
+        if t_A == t_B: return k_A
+        if k_A == k_B: return k_A 
         frac = (t - t_A) / (t_B - t_A)
         km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
         t_prof_A = float(np.interp(k_A * 1000.0, km_sorted, t_sorted))
@@ -405,16 +336,16 @@ def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodo
     dur = t_fin - t_ini
     if dur <= 0: return km_orig if km_orig is not None else (0.0 if via==1 else KM_TOTAL)
     frac = max(0.0, min(1.0, (t - t_ini) / dur))
-    
-    if km_orig is None: km_orig = 0.0 if via == 1 else KM_TOTAL
-    if km_dest is None: km_dest = KM_TOTAL if via == 1 else 0.0
-    
-    km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
-    t_at_orig = float(np.interp(km_orig * 1000.0, km_sorted, t_sorted))
-    t_at_dest = float(np.interp(km_dest * 1000.0, km_sorted, t_sorted))
-    t_prof = t_at_orig + frac * (t_at_dest - t_at_orig)
-    
     km_arr, t_arr_prof = _PROF[(via, use_rm)]
+    km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
+    
+    if km_orig is None: km_orig = 0.0     if via == 1 else KM_TOTAL
+    if km_dest is None: km_dest = KM_TOTAL if via == 1 else 0.0
+    ko_m = km_orig * 1000.0
+    kd_m = km_dest * 1000.0
+    t_at_orig = float(np.interp(ko_m, km_sorted, t_sorted))
+    t_at_dest = float(np.interp(kd_m, km_sorted, t_sorted))
+    t_prof = t_at_orig + frac * (t_at_dest - t_at_orig)
     km_m = float(np.interp(t_prof, t_arr_prof, km_arr))
     return max(0.0, min(km_m / 1000.0, KM_TOTAL))
 
@@ -432,7 +363,7 @@ def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=N
     else: return "CRUISE", vel_max
 
 # =============================================================================
-# 6. AUXILIARES DINÁMICOS
+# 6. AUXILIARES DINÁMICOS v113
 # =============================================================================
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
     hora_int = int(hora_decimal) % 24
@@ -455,7 +386,8 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
 # =============================================================================
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
-    trc, aux, reg, t_horas = 0.0, 0.0, 0.0, 0.0
+    trc, aux, reg = 0.0, 0.0, 0.0
+    t_horas = 0.0
     
     k_s, k_e = km_ini, km_fin
     dst = abs(k_e - k_s)
@@ -493,9 +425,10 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if maniobra == 'CORTE_SA' and km_actual > 29.1: es_doble = False
             if maniobra == 'ACOPLE_BTO' and km_actual < 25.3: es_doble = False
             if maniobra == 'ACOPLE_SA' and km_actual < 29.1: es_doble = False
-            
             n_uni = 2 if es_doble else 1
+            
             pax_mid = get_pax_at_km(pax_dict, km_actual, via_op, pax_abordo) if pax_dict else pax_abordo
+            
             masa_kg = ((f['tara_t'] + f['m_iner_t']) * 1000 * n_uni) + (pax_mid * PAX_KG)
             
             v_cons_kmh = max(5.0, vel_at_km(km_actual, via_op, use_rm))
@@ -544,6 +477,7 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 elif estado_marcha not in ["ACCEL", "COAST", "BRAKE_STATION", "BRAKE_OVERSPEED"]: estado_marcha = "ACCEL"
 
             f_motor, f_regen_tramo, a_net = 0.0, 0.0, 0.0
+            
             if estado_marcha == "BRAKE_STATION":
                 f_req_freno = max(0.0, masa_kg * a_freno_op - f_davis - f_pend)
                 f_regen_tramo = min(f_req_freno, f_disp_freno)
@@ -636,8 +570,7 @@ def distribuir_energia_sers(e_pantografo, t_horas, km_ini, km_fin, active_sers):
         return {active_sers[0][1]: e_s}
     sers_sorted = sorted(active_sers, key=lambda x: x[0])
     boundaries = [0.0]
-    for i in range(len(sers_sorted)-1): 
-        boundaries.append((sers_sorted[i][0] + sers_sorted[i+1][0]) / 2.0)
+    for i in range(len(sers_sorted)-1): boundaries.append((sers_sorted[i][0] + sers_sorted[i+1][0]) / 2.0)
     boundaries.append(KM_TOTAL)
     dist_total = abs(km_fin - km_ini)
     if dist_total < 0.001:
@@ -674,25 +607,14 @@ def calcular_flujo_ac_nodo(demands_kw):
     i_es = max(0.0, demands_kw.get('SER ES', 0.0)) * 1000 / (1.732 * V_NOMINAL_AC * 0.95)
     i_eb = max(0.0, demands_kw.get('SER EB', 0.0)) * 1000 / (1.732 * V_NOMINAL_AC * 0.95)
     i_va = max(0.0, demands_kw.get('SER VA', 0.0)) * 1000 / (1.732 * V_NOMINAL_AC * 0.95)
-    
-    len_seat_es = abs(24.3 - 12.7)
-    len_es_po = abs(12.7 - 4.9)
-    dv_seat_es = 1.732 * (i_po + i_es) * Z_EFF_44KV * len_seat_es
-    dv_es_po = 1.732 * (i_po) * Z_EFF_44KV * len_es_po
-    loss_seat_es = 3 * ((i_po + i_es)**2) * R_AC_44KV * len_seat_es / 1000.0
-    loss_es_po = 3 * (i_po**2) * R_AC_44KV * len_es_po / 1000.0
-    v_ac_es = V_NOMINAL_AC - dv_seat_es
-    v_ac_po = V_NOMINAL_AC - dv_seat_es - dv_es_po
-    
-    len_seat_eb = abs(25.5 - 24.3)
-    len_eb_va = abs(28.7 - 25.5)
-    dv_seat_eb = 1.732 * (i_eb + i_va) * Z_EFF_44KV * len_seat_eb
-    dv_eb_va = 1.732 * (i_va) * Z_EFF_44KV * len_eb_va
-    loss_seat_eb = 3 * ((i_eb + i_va)**2) * R_AC_44KV * len_seat_eb / 1000.0
-    loss_eb_va = 3 * (i_va**2) * R_AC_44KV * len_eb_va / 1000.0
-    v_ac_eb = V_NOMINAL_AC - dv_seat_eb
-    v_ac_va = V_NOMINAL_AC - dv_seat_eb - dv_eb_va
-    
+    len_seat_es, len_es_po = abs(24.3 - 12.7), abs(12.7 - 4.9)
+    dv_seat_es, dv_es_po = 1.732 * (i_po + i_es) * Z_EFF_44KV * len_seat_es, 1.732 * (i_po) * Z_EFF_44KV * len_es_po
+    loss_seat_es, loss_es_po = 3 * ((i_po + i_es)**2) * R_AC_44KV * len_seat_es / 1000.0, 3 * (i_po**2) * R_AC_44KV * len_es_po / 1000.0
+    v_ac_es, v_ac_po = V_NOMINAL_AC - dv_seat_es, V_NOMINAL_AC - dv_seat_es - dv_es_po
+    len_seat_eb, len_eb_va = abs(25.5 - 24.3), abs(28.7 - 25.5)
+    dv_seat_eb, dv_eb_va = 1.732 * (i_eb + i_va) * Z_EFF_44KV * len_seat_eb, 1.732 * (i_va) * Z_EFF_44KV * len_eb_va
+    loss_seat_eb, loss_eb_va = 3 * ((i_eb + i_va)**2) * R_AC_44KV * len_seat_eb / 1000.0, 3 * (i_va**2) * R_AC_44KV * len_eb_va / 1000.0
+    v_ac_eb, v_ac_va = V_NOMINAL_AC - dv_seat_eb, V_NOMINAL_AC - dv_seat_eb - dv_eb_va
     return {
         'SER PO': {'Vac': v_ac_po, 'Vdc': 3000.0 * (v_ac_po / V_NOMINAL_AC)},
         'SER ES': {'Vac': v_ac_es, 'Vdc': 3000.0 * (v_ac_es / V_NOMINAL_AC)},
@@ -710,15 +632,12 @@ def calcular_receptividad_por_headway(df_dia: pd.DataFrame) -> dict:
     for via in [1, 2]:
         sub = df_dia[df_dia["Via"] == via].sort_values("t_ini").copy()
         if sub.empty: continue
-        indices = list(sub.index)
-        t_ini_vals = sub["t_ini"].values
+        indices, t_ini_vals = list(sub.index), sub["t_ini"].values
         for i, idx in enumerate(indices):
             headways = []
             if i > 0: headways.append(t_ini_vals[i] - t_ini_vals[i-1])
             if i < len(indices)-1: headways.append(t_ini_vals[i+1] - t_ini_vals[i])
-            if not headways: 
-                result[idx] = 0.10
-                continue
+            if not headways: result[idx] = 0.10; continue
             hw = min(headways)
             if hw < 5.0: eta = 0.90
             elif hw < 10.0: eta = 0.75 - ((hw - 5.0) / 5.0) * 0.45
@@ -726,17 +645,14 @@ def calcular_receptividad_por_headway(df_dia: pd.DataFrame) -> dict:
             result[idx] = min(eta, 0.90)
     return result
 
-@st.cache_data(show_spinner="Simulando malla eléctrica y receptividad...")
+@st.cache_data(show_spinner="Simulando malla eléctrica y receptividad V1/V2 (Balance Nodal - 5km)...")
 def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="primavera"):
     regen_util_per_trip = {idx: 0.0 for idx in df_dia.index}
     braking_ticks_per_trip = {idx: 0.0 for idx in df_dia.index} 
     if df_dia.empty: return regen_util_per_trip
-    
-    t_min = int(df_dia['t_ini'].min())
-    t_max = int(df_dia['t_fin'].max())
+    t_min, t_max = int(df_dia['t_ini'].min()), int(df_dia['t_fin'].max())
     dt_step = 10.0 / 60.0 
     time_steps = np.arange(t_min, t_max + 1, dt_step)
-    
     for via_ in [1, 2]:
         via_trains = df_dia[df_dia['Via'] == via_]
         if via_trains.empty: continue
@@ -749,10 +665,8 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 't_arr': [n[0] for n in nodos] if nodos and len(nodos) >= 2 else None,
                 'tipo_tren': r.get('tipo_tren', 'XT-100'), 'doble': r.get('doble', False), 'pax_abordo': r.get('pax_abordo', 0)
             })
-            
         braking_by_idx = [[] for _ in range(len(time_steps))]
         accel_by_idx = [[] for _ in range(len(time_steps))]
-        
         for tr in trains_data:
             idx_start = np.searchsorted(time_steps, max(t_min, tr['t_ini']))
             idx_end = np.searchsorted(time_steps, min(t_max, tr['t_fin']), side='right')
@@ -760,7 +674,6 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
             n_uni = 2 if tr['doble'] else 1
             masa_kg = ((f['tara_t'] + f['m_iner_t']) * 1000 * n_uni) + (tr['pax_abordo'] * PAX_KG)
             eta_m = f.get('eta_motor', 0.92)
-            
             for i in range(idx_start, idx_end):
                 m = time_steps[i]
                 state, v_kmh = get_train_state_and_speed(m, tr['Via'], use_rm, tr['km_orig'], tr['km_dest'], tr['nodos'], tr['t_arr'])
@@ -768,36 +681,38 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 v_ms = v_kmh / 3.6
                 p_aux_kw = calcular_aux_dinamico(f['aux_kw'] * n_uni, m / 60.0, tr['pax_abordo'], f.get('cap_max', 398) * n_uni, estacion_anio, state)
                 f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
-                
+                f_pend = 0.0
                 if state in ("BRAKE", "BRAKE_STATION", "BRAKE_OVERSPEED"):
-                    f_req_freno = max(0.0, masa_kg * (f['a_freno_ms2'] * 0.9) - f_davis)
+                    f_req_freno = max(0.0, masa_kg * (f['a_freno_ms2'] * 0.9) - f_davis - f_pend)
                     f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
                     p_gen_kw = ((min(f_req_freno, f_disp_freno) * v_ms) / 1000.0 * ETA_REGEN_NETA) - p_aux_kw
-                    if p_gen_kw > 0: 
-                        braking_by_idx[i].append((tr['idx'], pos, p_gen_kw))
+                    if p_gen_kw > 0: braking_by_idx[i].append((tr['idx'], pos, p_gen_kw))
                     braking_ticks_per_trip[tr['idx']] += 1
                 elif state in ("ACCEL", "CRUISE"):
                     p_dem_kw = p_aux_kw
-                    if state == "ACCEL": 
+                    if state == "ACCEL":
                         p_dem_kw += (((min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)) * v_ms) / 1000.0 / eta_m)
-                    elif state == "CRUISE" and f_davis > 0: 
-                        p_dem_kw += (((f_davis * v_ms) / 1000.0) / eta_m)
-                    accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
-                    
+                        accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
+                    elif state == "CRUISE" and (f_davis + f_pend > 0):
+                        p_dem_kw += ((((f_davis + f_pend) * v_ms) / 1000.0) / eta_m)
+                        accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
         for i in range(len(time_steps)):
-            if not braking_by_idx[i] or not accel_by_idx[i]: continue
-            current_demands = {a[0]: a[2] for a in accel_by_idx[i]}
-            for b_idx, b_pos, p_gen in braking_by_idx[i]:
-                available = [a for a in accel_by_idx[i] if current_demands[a[0]] > 0]
-                if not available: break 
-                a_idx, a_pos, _ = min(available, key=lambda x: abs(x[1] - b_pos))
-                if abs(a_pos - b_pos) <= LAMBDA_REGEN_KM * 2:
-                    p_transferred = min(p_gen * (ETA_MAX * np.exp(-abs(a_pos - b_pos) / LAMBDA_REGEN_KM)), current_demands[a_idx])
+            braking, accel = braking_by_idx[i], accel_by_idx[i]
+            if not braking or not accel: continue
+            current_demands = {a[0]: a[2] for a in accel}
+            for b_idx, b_pos, p_gen in braking:
+                available_sinks = [a for a in accel if current_demands[a[0]] > 0]
+                if not available_sinks: break 
+                best_a = min(available_sinks, key=lambda x: abs(x[1] - b_pos))
+                a_idx, a_pos, _ = best_a
+                d = abs(a_pos - b_pos)
+                if d <= LAMBDA_REGEN_KM * 2:
+                    p_transferred = min(p_gen * (ETA_MAX * np.exp(-d / LAMBDA_REGEN_KM)), current_demands[a_idx])
                     current_demands[a_idx] -= p_transferred
                     regen_util_per_trip[b_idx] += (p_transferred / p_gen)
-                    
-    for idx in df_dia.index: 
-        regen_util_per_trip[idx] = min(1.0, regen_util_per_trip[idx] / braking_ticks_per_trip[idx]) if braking_ticks_per_trip[idx] > 0 else 0.0
+    for idx in df_dia.index:
+        ticks = braking_ticks_per_trip[idx]
+        regen_util_per_trip[idx] = min(1.0, regen_util_per_trip[idx] / ticks) if ticks > 0 else 0.0
     return regen_util_per_trip
 
 @st.cache_data(show_spinner="Integrando Termodinámica de Flota...")
@@ -806,11 +721,18 @@ def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_re
     if df_e.empty: return df_e
     def _wrapper_energia(r):
         trc, aux, reg_panto_max, _, _, t_h = simular_tramo_termodinamico(
-            r['tipo_tren'], r.get('doble', False), r['km_orig'], r['km_dest'], r['Via'], 
-            pct_trac, use_rm, use_pend, r.get('nodos'), r.get('pax_d', {}), r.get('pax_abordo', 0), 
-            None, r.get('maniobra'), estacion_anio, r.get('t_ini', 0.0)
+            r['tipo_tren'], r.get('doble', False), r['km_orig'], r['km_dest'], r['Via'],
+            pct_trac, use_rm, use_pend, r.get('nodos'), r.get('pax_d', {}), r.get('pax_abordo', 0), None, r.get('maniobra'),
+            estacion_anio, r.get('t_ini', 0.0)
         )
-        reg_util = reg_panto_max * dict_regen.get(r.name, 1.0) if use_regen else 0.0
+        if use_regen:
+            if dict_regen and r.name in dict_regen:
+                reg_util = reg_panto_max * dict_regen[r.name]
+            else:
+                reg_util = reg_panto_max
+        else:
+            reg_util = 0.0
+            
         return pd.Series([trc, aux, reg_util, max(0.0, reg_panto_max - reg_util), max(0.0, trc + aux - reg_util)])
     df_e[['kwh_viaje_trac', 'kwh_viaje_aux', 'kwh_viaje_regen', 'kwh_reostato', 'kwh_viaje_neto']] = df_e.apply(_wrapper_energia, axis=1)
     return df_e
@@ -823,37 +745,138 @@ def get_vacios_dia(df_dia):
     vacios = []
     if df_dia.empty: return vacios
     agrupador = 'motriz_num' if 'motriz_num' in df_dia.columns else 'num_servicio'
-    
     def _get_est_name(km):
         if pd.isna(km): return "Desconocido"
-        dists = [abs(km - k) for k in KM_ACUM]
-        idx = int(np.argmin(dists))
-        return ESTACIONES[idx] if dists[idx] <= 1.5 else f"km {km:.1f}"
-        
+        d = [abs(km - k) for k in KM_ACUM]
+        idx = int(np.argmin(d))
+        return ESTACIONES[idx] if d[idx] <= 1.5 else f"km {km:.1f}"
     for tren, group in df_dia.sort_values('t_ini').groupby(agrupador):
         if str(tren).strip() == '' or str(tren).strip() == 'nan': continue
         viajes = group.to_dict('records')
         if not viajes: continue
-        
         p = viajes[0]
         if abs(p.get('km_orig', 0) - KM_ACUM[14]) < 0.1:
             vacios.append({'t_asigned': p['t_ini'] - 10, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'El Belloto', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
         elif abs(p.get('km_orig', 0) - KM_ACUM[18]) < 0.1:
             vacios.append({'t_asigned': p['t_ini'] - 20, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'Sargento Aldea', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
-            
         for i in range(len(viajes) - 1):
             actual, sig = viajes[i], viajes[i+1]
             k_o, k_d = actual.get('km_dest', 0), sig.get('km_orig', 0)
             dist = abs(k_o - k_d)
             if 0.1 < dist <= 20.0:
                 vacios.append({'t_asigned': actual['t_fin'] + 5, 'tipo': actual.get('tipo_tren', 'XT-100'), 'doble': actual.get('doble', False), 'cochera': False, 'km_orig': k_o, 'km_dest': k_d, 'dist': dist, 'motriz_num': tren, 'origen_txt': _get_est_name(k_o), 'destino_txt': _get_est_name(k_d), 'servicio_previo': str(actual.get('num_servicio', '')), 'servicio_siguiente': str(sig.get('num_servicio', ''))})
-                
         u = viajes[-1]
         if abs(u.get('km_dest', 0) - KM_ACUM[14]) < 0.1:
             vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'El Belloto', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
         elif abs(u.get('km_dest', 0) - KM_ACUM[18]) < 0.1:
             vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
     return vacios
+
+# =============================================================================
+# 10. PERFILES PROMEDIO DE PASAJEROS (V117)
+# =============================================================================
+@st.cache_data(show_spinner="Calculando perfiles promedio de pasajeros por tipo de día...")
+def get_perfiles_pax(df_px):
+    if df_px.empty: return {}
+    df_p = df_px.copy()
+    
+    df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha_s'], errors='coerce')
+    df_p = df_p.dropna(subset=['Fecha_dt'])
+    if df_p.empty: return {}
+    
+    feriados_2026 = ['2026-01-01', '2026-04-03', '2026-04-04', '2026-05-01', '2026-05-21', '2026-06-21', '2026-07-16', '2026-08-15', '2026-09-18', '2026-09-19', '2026-10-12', '2026-10-31', '2026-12-08', '2026-12-25']
+    
+    def clasificar_dia(d):
+        str_d = d.strftime('%Y-%m-%d')
+        if str_d in feriados_2026 or d.weekday() == 6: return 'Domingo/Festivo'
+        if d.weekday() == 5: return 'Sábado'
+        return 'Laboral'
+        
+    df_p['Tipo_Dia'] = df_p['Fecha_dt'].apply(clasificar_dia)
+    
+    for c in PAX_COLS + ['CargaMax']:
+        if c in df_p.columns:
+            df_p[c] = pd.to_numeric(df_p[c], errors='coerce').fillna(0)
+            
+    perfiles = {}
+    for t_dia in ['Laboral', 'Sábado', 'Domingo/Festivo']:
+        for via in [1, 2]:
+            sub = df_p[(df_p['Tipo_Dia'] == t_dia) & (df_p['Via'] == via)]
+            if not sub.empty:
+                promedios = sub[PAX_COLS].mean().round().astype(int).to_dict()
+                promedios['CargaMax_Promedio'] = int(sub['CargaMax'].mean().round())
+            else:
+                promedios = {c: 0 for c in PAX_COLS}
+                promedios['CargaMax_Promedio'] = 0
+            perfiles[(t_dia, via)] = promedios
+    return perfiles
+
+def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
+    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
+    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
+    pax_val = 0
+    if via == 1:
+        for i in range(N_EST):
+            if km_pos >= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    else:
+        for i in range(N_EST - 1, -1, -1):
+            if km_pos <= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    return int(pax_val)
+
+# =============================================================================
+# CACHÉ REACTIVO DEL PLANIFICADOR
+# =============================================================================
+@st.cache_data(show_spinner="Integrando variables físicas y termodinámicas de la Planilla...")
+def procesar_planificador_reactivo(df_sint, tipo_dia_plan, pax_promedio_viaje, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen, perfiles_pax):
+    viajes_completos = []
+    for idx, r in df_sint.iterrows():
+        via_tren = r['Via']
+        pax_dict_dinamico = perfiles_pax.get((tipo_dia_plan, via_tren), {})
+        pax_abordo_base = pax_dict_dinamico.get('CargaMax_Promedio', pax_promedio_viaje)
+        
+        f_gauss = 0.2 + 0.8 * np.exp(-0.5 * ((r['t_ini'] - 450)/60)**2) + 0.8 * np.exp(-0.5 * ((r['t_ini'] - 1080)/90)**2)
+        pax_calculado = int(pax_abordo_base * f_gauss * 1.5)
+        cap_m = FLOTA[r['tipo_tren']].get('cap_max', 398) * (2 if r['doble'] else 1)
+        pax_calculado = min(pax_calculado, cap_m)
+        
+        if pax_dict_dinamico:
+            pax_arr_viaje = {k: min(int(v * f_gauss * 1.5), cap_m) for k, v in pax_dict_dinamico.items() if k != 'CargaMax_Promedio'}
+        else:
+            pax_arr_viaje = {}
+        
+        trc_v, aux_v, reg_v, _, _, t_horas_v = simular_tramo_termodinamico(
+            r['tipo_tren'], r['doble'], r['km_orig'], r['km_dest'], r['Via'],
+            pct_trac, use_rm, use_pend, r['nodos'], pax_arr_viaje, pax_calculado, None, None, estacion_anio_plan, r['t_ini']
+        )
+        
+        t_fin_real = r['t_ini'] + (t_horas_v * 60.0)
+        viaje_final = r.to_dict()
+        viaje_final['pax_d'] = pax_arr_viaje
+        viaje_final['pax_abordo'] = pax_calculado
+        viaje_final['t_fin'] = t_fin_real
+        viajes_completos.append(viaje_final)
+        
+    df_sint_final = pd.DataFrame(viajes_completos)
+    df_sint_final['tren_km'] = df_sint_final.apply(calc_tren_km_real_general, axis=1)
+    df_sint_final.index = df_sint_final['_id']
+    
+    if use_regen:
+        if "Probabilístico" in tipo_regen:
+            dict_regen_sint = calcular_receptividad_por_headway(df_sint_final)
+        else:
+            dict_regen_sint = precalcular_red_electrica_v111(df_sint_final, pct_trac, use_rm, estacion_anio_plan)
+    else:
+        dict_regen_sint = {}
+        
+    df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
+    
+    return df_sint_final, df_sint_e
 
 # =============================================================================
 # 11. PARSERS Y LECTORES DE DATOS BASE (THDR / PAX / PLANILLA)
@@ -865,14 +888,20 @@ def procesar_thdr(data, fname, via_param=1):
             try: raw = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: raw = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else:
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                raw = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    raw = dfs[0].astype(str)
+                except:
+                    try: raw = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: raw = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
-        
         fecha_str = extraer_fecha_segura(raw, fname)
-        
         header_idx = 1
         for i in range(min(15, len(raw))):
             row_vals = [str(x).upper() for x in raw.iloc[i].values if pd.notna(x)]
@@ -882,34 +911,30 @@ def procesar_thdr(data, fname, via_param=1):
                 break
                 
         r0 = raw.iloc[header_idx - 1].copy() if header_idx > 0 else raw.iloc[0].copy()
+        
+        # MANTENIMIENTO CRITICO v117: Remplazo estricto de nulos interpretados como strings en archivos brutos
+        r0 = r0.replace(['nan', 'NaN', 'None', '', ' ', '<NA>'], np.nan)
         r0.iloc[0] = np.nan 
-        h1 = r0.ffill().astype(str)
-        h2 = raw.iloc[header_idx].fillna('').astype(str)
+        h1 = r0.ffill().fillna('').astype(str)
+        
+        h2 = raw.iloc[header_idx].replace(['nan', 'NaN', 'None', '<NA>'], '').fillna('').astype(str)
         
         cols = []
         for s, t in zip(h1, h2):
-            s_val = str(s).strip()
-            t_val = str(t).strip()
-            if s_val.lower() == 'nan' or not s_val:
-                cols.append(t_val)
-            elif t_val:
-                cols.append(f"{s_val}_{t_val}")
-            else:
-                cols.append(s_val)
+            s, t = str(s).strip(), str(t).strip()
+            if s.lower() == 'nan': s = ''
+            if t.lower() == 'nan': t = ''
+            cols.append(t if not s else (f"{s}_{t}" if t else s))
             
         df = raw.iloc[header_idx + 1:].copy().reset_index(drop=True)
         n = len(df.columns)
-        if len(cols) >= n:
-            df.columns = cols[:n]
-        else:
-            df.columns = cols + [f"_C{j}" for j in range(n - len(cols))]
-            
+        df.columns = cols[:n] if len(cols)>=n else cols+[f"_C{j}" for j in range(n-len(cols))]
         df = make_unique(df).dropna(how='all').reset_index(drop=True)
 
         if df.empty: return pd.DataFrame(), f"Sin filas tras limpiar: {fname}"
 
         for col in df.columns:
-            if any(k in str(col).upper() for k in ['LLEGADA','SALIDA','HORA']):
+            if any(k in str(col).lower() for k in ['llegada','salida','hora']):
                 try: df[f"{col}_min"] = df[col].apply(parse_time_to_mins)
                 except: pass
 
@@ -922,8 +947,10 @@ def procesar_thdr(data, fname, via_param=1):
                 if col_name and pd.notna(r.get(col_name)):
                     val = str(r.get(col_name)).strip()
                     if val.lower() not in ('nan', '', '0', '0.0'):
-                        m = re.search(r'(\d+)', val)
-                        if m: return int(m.group(1))
+                        try: return int(float(val))
+                        except ValueError:
+                            m = re.search(r'(\d+)', val)
+                            if m: return int(m.group(1))
                 return None
             
             n1 = extract_n(c_m1)
@@ -933,19 +960,15 @@ def procesar_thdr(data, fname, via_param=1):
             n_eval = None
             
             if (n1 is not None and n1 != 0) and (n2 is not None and n2 != 0):
-                motriz_str = f"{n1}+{n2}"
-                n_eval = n1
+                motriz_str = f"{n1}+{n2}"; n_eval = n1
             elif (n1 is not None and n1 != 0):
-                motriz_str = f"{n1}"
-                n_eval = n1
+                motriz_str = f"{n1}"; n_eval = n1
             elif (n2 is not None and n2 != 0):
-                motriz_str = f"{n2}"
-                n_eval = n2
+                motriz_str = f"{n2}"; n_eval = n2
             else:
                 n_tren = extract_n(tren_col)
                 if n_tren is not None and n_tren != 0:
-                    motriz_str = f"{n_tren}"
-                    n_eval = n_tren
+                    motriz_str = f"{n_tren}"; n_eval = n_tren
                     
             if n_eval is not None:
                 if 1 <= n_eval <= 27: tipo = "XT-100"
@@ -955,15 +978,17 @@ def procesar_thdr(data, fname, via_param=1):
                     
             return pd.Series([motriz_str, tipo])
             
-        df[['motriz_num', 'tipo_tren']] = df.apply(_get_fleet_info, axis=1)
+        if df.empty: return pd.DataFrame(), f"Sin filas para aplicar flota: {fname}"
+        # MANTENIMIENTO CRITICO v117: result_type='expand' para evitar problemas de dimensionalidad
+        df[['motriz_num', 'tipo_tren']] = df.apply(_get_fleet_info, axis=1, result_type='expand')
 
         if 'Unidad' in df.columns:
             df['Unidad'] = df['Unidad'].fillna('S').replace('nan','S').replace('','S')
         else:
             df['Unidad'] = df[c_m2].apply(lambda x: 'M' if pd.notna(x) and str(x).strip() not in ('0','0.0','','nan') else 'S') if c_m2 else 'S'
             
-        df['doble'] = df['Unidad'].astype(str).str.strip() == 'M'
-        df['Via'] = via_param
+        df['doble']     = df['Unidad'].astype(str).str.strip()=='M'
+        df['Via']       = via_param
         df['Fecha_str'] = fecha_str
 
         sal_cols = [c for c in df.columns if 'salida' in str(c).lower() and '_min' in str(c).lower() and 'program' not in str(c).lower()]
@@ -974,8 +999,10 @@ def procesar_thdr(data, fname, via_param=1):
             try: return r.get(col, np.nan)
             except: return np.nan
 
-        sal_est = {c: v for c, v in {c: _col_to_est_idx(c) for c in sal_cols}.items() if v is not None}
-        lle_est = {c: v for c, v in {c: _col_to_est_idx(c) for c in lle_cols}.items() if v is not None}
+        sal_est = {c: _col_to_est_idx(c) for c in sal_cols}
+        sal_est = {c: v for c, v in sal_est.items() if v is not None}
+        lle_est = {c: _col_to_est_idx(c) for c in lle_cols}
+        lle_est = {c: v for c, v in lle_est.items() if v is not None}
 
         valid_sal_cols = list(sal_est.keys())
         valid_lle_cols = list(lle_est.keys())
@@ -1026,7 +1053,7 @@ def procesar_thdr(data, fname, via_param=1):
                 
         df['dwell_min'] = df.apply(calc_dwell_dynamic, axis=1)
         df['dwell_cabecera_min'] = 0.0
-        
+
         viaje_col_idx = None
         for r in range(min(15, raw.shape[0])):
             for c in range(raw.shape[1]):
@@ -1039,23 +1066,14 @@ def procesar_thdr(data, fname, via_param=1):
         if viaje_col_idx is not None and viaje_col_idx < len(df.columns):
             col_name_v = df.columns[viaje_col_idx]
             df['nro_viaje'] = df[col_name_v].apply(clean_primary_key)
-        else:
-            df['nro_viaje'] = ''
-
-        serv_col = next((c for c in df.columns if 'servicio' in str(c).lower()), None)
-        if serv_col:
-            df['num_servicio'] = df[serv_col].apply(clean_primary_key)
-        elif 'nro_viaje' in df.columns:
-            df['num_servicio'] = df['nro_viaje']
-        else:
-            df['num_servicio'] = ''
+        else: df['nro_viaje'] = ''
 
         df['_id'] = df['Fecha_str'] + "_" + df['num_servicio'] + "_" + df['t_ini'].astype(str)
+
         df = df.dropna(subset=['t_ini'])
         df['t_fin'] = df['t_fin'].fillna(df['t_ini'] + df['km_viaje'] / 35.0 * 60.0)
         return df, "ok"
-    except Exception as e:
-        return pd.DataFrame(), str(e)
+    except Exception as e: return pd.DataFrame(), str(e)
 
 def calcular_dwell(df1, df2):
     if df1.empty or df2.empty: return df1, df2
@@ -1087,13 +1105,23 @@ def cargar_pax(data, fname, via_param=1):
             try: full = pd.read_csv(BytesIO(data), header=None, sep=',', encoding='utf-8', dtype=str)
             except: full = pd.read_csv(BytesIO(data), header=None, sep=';', encoding='latin-1', dtype=str)
         else: 
-            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            try:
+                eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+                full = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str)
+            except Exception as e:
+                try: 
+                    dfs = pd.read_html(BytesIO(data), header=None)
+                    full = dfs[0].astype(str)
+                except:
+                    try: full = pd.read_csv(BytesIO(data), header=None, sep='\t', encoding='latin-1', dtype=str)
+                    except: full = pd.read_excel(BytesIO(data), header=None, engine="openpyxl", dtype=str)
 
-        if full is None or full.empty or len(full) <= 10: return pd.DataFrame()
+        if full is None or full.empty: return pd.DataFrame()
+        if len(full) <= 10: return pd.DataFrame()
 
         header_idx = 9
         EXACT_MAP = {'PUE':'PUE','PUERTO':'PUE','PU':'PUE','BEL':'BEL','BELLAVISTA':'BEL','BE':'BEL','FRA':'FRA','FRANCIA':'FRA','FR':'FRA','BAR':'BAR','BARON':'BAR','BA':'BAR','POR':'POR','PORTALES':'POR','PO':'POR','REC':'REC','RECREO':'REC','RE':'REC','MIR':'MIR','MIRAMAR':'MIR','MI':'MIR','VIN':'VIN','VINA DEL MAR':'VIN','VIÑA DEL MAR':'VIN','VM':'VIN','HOS':'HOS','HOSPITAL':'HOS','HO':'HOS','CHO':'CHO','CHORRILLOS':'CHO','CH':'CHO','SLT':'SLT','SALTO':'SLT','EL SALTO':'SLT','ES':'SLT','ELS':'SLT','VAL':'VAL','VALENCIA':'VAL','QUI':'QUI','QUILPUE':'QUI','QUILPUÉ':'QUI','QU':'QUI','SOL':'SOL','EL SOL':'SOL','SO':'SOL','ESO':'SOL','BTO':'BTO','EL BELLOTO':'BTO','BELLOTO':'BTO','EB':'BTO','ELB':'BTO','AME':'AME','LAS AMERICAS':'AME','AMERICAS':'AME','LAS':'AME','LAM':'AME','AM':'AME','CON':'CON','LA CONCEPCION':'CON','CONCEPCION':'CON','LAC':'CON','LCO':'CON','CO':'CON','VAM':'VAM','VILLA ALEMANA':'VAM','ALEMANA':'VAM','VIL':'VAM','VALE':'VAM','VL':'VAM','SGA':'SGA','SARGENTO ALDEA':'SGA','ALDEA':'SGA','SAR':'SGA','SA':'SGA','PEN':'PEN','PENABLANCA':'PEN','PEÑABLANCA':'PEN','PENA BLANCA':'PEN','PENA':'PEN','PE':'PEN','LIM':'LIM','LIMACHE':'LIM','LI':'LIM'}
+
         col_mapping = {}
         keys_sorted = sorted(EXACT_MAP.keys(), key=len, reverse=True)
         
@@ -1111,28 +1139,32 @@ def cargar_pax(data, fname, via_param=1):
                     break
             
             if mapped: continue
+
             if 'HORA' in combo_norm and 'ORIG' in combo_norm: col_mapping[c_idx] = 'Hora Origen'
             elif 'THDR' in combo_norm and 'TREN' not in combo_norm: col_mapping[c_idx] = 'Nro_THDR_raw'
             elif 'TREN' in combo_norm or 'SERVICIO' in combo_norm: col_mapping[c_idx] = 'Tren'
             elif 'CargaMax' not in col_mapping.values():
-                if any(w in combo_norm for w in ['TOTAL', 'BORDO', 'CARGA', 'PASAJERO']) and not any(exc in combo_norm for exc in ['THDR', 'TREN', 'HORA', 'VIA']):
-                    col_mapping[c_idx] = 'CargaMax'
+                if any(w in combo_norm for w in ['TOTAL', 'BORDO', 'CARGA', 'PASAJERO']):
+                    if not any(exc in combo_norm for exc in ['THDR', 'TREN', 'HORA', 'VIA']):
+                        col_mapping[c_idx] = 'CargaMax'
 
-        data_rows = full.iloc[header_idx + 1:].copy()
         df = pd.DataFrame()
+        data_rows = full.iloc[header_idx + 1:].copy()
+        
         for c_idx, col_name in col_mapping.items():
-            if isinstance(c_idx, int) and c_idx < full.shape[1]: 
-                df[col_name] = data_rows.iloc[:, c_idx].values
+            if isinstance(c_idx, int) and c_idx < full.shape[1]: df[col_name] = data_rows.iloc[:, c_idx].values
                 
         fecha_global = extraer_fecha_segura(full, fname)
         if full.shape[1] > 3:
             df['Fecha_Excel_Raw'] = data_rows.iloc[:, 3].values
-            df['Fecha_s'] = df['Fecha_Excel_Raw'].apply(parse_excel_date).fillna(fecha_global).replace('', fecha_global).ffill()
+            df['Fecha_s'] = df['Fecha_Excel_Raw'].apply(parse_excel_date)
+            df['Fecha_s'] = df['Fecha_s'].fillna(fecha_global).replace('', fecha_global).ffill()
         else:
             df['Fecha_s'] = fecha_global
                 
-        for col in ['Hora Origen', 'Nro_THDR_raw', 'Tren']:
-            if col not in df.columns: df[col] = ''
+        if 'Hora Origen' not in df.columns: df['Hora Origen'] = ''
+        if 'Nro_THDR_raw' not in df.columns: df['Nro_THDR_raw'] = ''
+        if 'Tren' not in df.columns: df['Tren'] = ''
         if 'CargaMax' not in df.columns: df['CargaMax'] = '0'
         for c in PAX_COLS:
             if c not in df.columns: df[c] = '0'
@@ -1142,6 +1174,7 @@ def cargar_pax(data, fname, via_param=1):
         df['t_ini_p'] = df['Hora Origen'].apply(parse_time_to_mins)
         df['Via'] = via_param
         df = df.dropna(subset=['t_ini_p'])
+        
         if df.empty: return pd.DataFrame()
         for c in PAX_COLS + ['CargaMax']: df[c] = df[c].apply(clean_pax_number)
         return df
@@ -1153,12 +1186,9 @@ def match_pax(row, df_pax):
     def _to_int(v):
         try: return int(float(v)) if pd.notna(v) else 0
         except: return 0
-        
-    t_i = row.get('t_ini')
-    via = row.get('via_op', row.get('Via', 1))
+    t_i, via = row.get('t_ini'), row.get('via_op', row.get('Via', 1))
     nro_viaje = clean_primary_key(row.get('nro_viaje', ''))
     thdr_date = row.get('Fecha_str')
-    
     sub = df_pax[df_pax['Via'] == via].copy()
     if sub.empty: return EMPTY
     if 'Fecha_s' in sub.columns and thdr_date and thdr_date != '2026-01-01':
@@ -1166,7 +1196,12 @@ def match_pax(row, df_pax):
         if not sub_date.empty: sub = sub_date
         else: return EMPTY 
 
-    sub['diff'] = sub['t_ini_p'].apply(lambda x: min(abs(float(x) - float(t_i)), 1440 - abs(float(x) - float(t_i))) if pd.notna(x) and pd.notna(t_i) else 9999)
+    def time_diff(t1, t2):
+        if pd.isna(t1) or pd.isna(t2): return 9999
+        d = abs(float(t1) - float(t2))
+        return min(d, 1440 - d)
+
+    sub['diff'] = sub['t_ini_p'].apply(lambda x: time_diff(x, t_i))
     if nro_viaje != '' and 'Nro_THDR' in sub.columns:
         sub['Nro_THDR_cmp'] = sub['Nro_THDR'].apply(clean_primary_key)
         match_exacto = sub[(sub['Nro_THDR_cmp'] == nro_viaje) & (sub['Nro_THDR_cmp'] != '')]
@@ -1235,6 +1270,7 @@ def parsear_planilla_maestra(data, fname):
                         
                         viaje_num = int(m_viaje.group(1))
                         servicio_num = int(m_srv.group(1))
+
                         t_ini = parse_time_to_mins(hora_str)
                         if t_ini is None: continue
 
@@ -1257,7 +1293,13 @@ def parsear_planilla_maestra(data, fname):
                             
                         ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                         nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
-                        viajes.append({'_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via, 'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via, 'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta, 'maniobra': None})
+                        
+                        viajes.append({
+                            '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
+                            'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
+                            'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
+                            'maniobra': None
+                        })
             else:
                 for i in range(len(df)):
                     row_vals = df.iloc[i].fillna('').astype(str).tolist()
@@ -1272,8 +1314,7 @@ def parsear_planilla_maestra(data, fname):
                                 if c_idx - offset >= 0:
                                     check_val = row_vals[c_idx - offset].strip()
                                     if check_val.isdigit() and 200 <= int(check_val) <= 1999:
-                                        servicio_num = int(check_val)
-                                        sc_idx = c_idx - offset
+                                        servicio_num, sc_idx = int(check_val), c_idx - offset
                                         break
                             
                             viaje_num = None
@@ -1284,8 +1325,10 @@ def parsear_planilla_maestra(data, fname):
                                         if check_val.isdigit() and 1 <= int(check_val) <= 300:
                                             viaje_num = int(check_val)
                                             break
+                                        
                             if servicio_num is None: continue
 
+                            # Búsqueda estricta solo en las celdas adyacentes para anular contagios horizontales
                             es_doble = False
                             for offset_unidad in range(1, 3):
                                 if c_idx + offset_unidad < len(row_vals):
@@ -1323,72 +1366,53 @@ def parsear_planilla_maestra(data, fname):
     except Exception as e: return pd.DataFrame(), str(e)
 
 # =============================================================================
-# CACHÉ REACTIVO DEL PLANIFICADOR (V117 - Integración de Pax Avanzada)
+# 12. CACHÉ Y CARGADORES DE STREAMLIT (UI)
 # =============================================================================
-@st.cache_data(show_spinner="Integrando física y demanda de pasajeros...")
-def procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen):
-    viajes_completos = []
-    for idx, r in df_sint.iterrows():
-        via_tren = r['Via']
-        t_ini_tren = r['t_ini']
-        num_serv = str(r.get('num_servicio', ''))
-        
-        pax_arr_viaje = {c: 0 for c in PAX_COLS}
-        pax_calculado = 0
-        
-        if not df_px_filtered.empty:
-            sub = df_px_filtered[df_px_filtered['Via'] == via_tren].copy()
-            if not sub.empty:
-                exact = pd.DataFrame()
-                if num_serv and 'Nro_THDR' in sub.columns:
-                    sub['Nro_THDR_cmp'] = sub['Nro_THDR'].apply(clean_primary_key)
-                    exact = sub[(sub['Nro_THDR_cmp'] == num_serv) & (sub['Nro_THDR_cmp'] != '')]
-                
-                if not exact.empty:
-                    for c in PAX_COLS: pax_arr_viaje[c] = int(round(exact[c].mean()))
-                    pax_calculado = int(round(exact['CargaMax'].mean()))
-                else:
-                    sub['diff'] = sub['t_ini_p'].apply(lambda x: min(abs(float(x) - float(t_ini_tren)), 1440 - abs(float(x) - float(t_ini_tren))) if pd.notna(x) else 9999)
-                    cercanos = sub[sub['diff'] <= 30]
-                    if cercanos.empty: cercanos = sub.loc[[sub['diff'].idxmin()]]
-                    for c in PAX_COLS: pax_arr_viaje[c] = int(round(cercanos[c].mean()))
-                    pax_calculado = int(round(cercanos['CargaMax'].mean()))
-        else:
-            pax_calculado = 150 
-        
-        cap_m = FLOTA[r['tipo_tren']].get('cap_max', 398) * (2 if r['doble'] else 1)
-        pax_calculado = min(pax_calculado, cap_m)
-        pax_arr_viaje = {k: min(v, cap_m) for k, v in pax_arr_viaje.items()}
-        
-        trc_v, aux_v, reg_v, _, _, t_h = simular_tramo_termodinamico(
-            r['tipo_tren'], r['doble'], r['km_orig'], r['km_dest'], r['Via'], 
-            pct_trac, use_rm, use_pend, r['nodos'], pax_arr_viaje, pax_calculado, 
-            None, None, estacion_anio_plan, r['t_ini']
-        )
-        
-        viaje_final = r.to_dict()
-        viaje_final['pax_d'] = pax_arr_viaje
-        viaje_final['pax_abordo'] = pax_calculado
-        viaje_final['t_fin'] = r['t_ini'] + (t_h * 60.0)
-        viajes_completos.append(viaje_final)
-        
-    df_sint_final = pd.DataFrame(viajes_completos)
-    df_sint_final['tren_km'] = df_sint_final.apply(calc_tren_km_real_general, axis=1)
-    df_sint_final.index = df_sint_final['_id']
-    
-    dict_regen_sint = calcular_receptividad_por_headway(df_sint_final) if use_regen and "Probabilístico" in tipo_regen else (precalcular_red_electrica_v111(df_sint_final, pct_trac, use_rm, estacion_anio_plan) if use_regen else {})
-    df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
-    return df_sint_final, df_sint_e
-
 def leer(files): return [(f.name, f.read()) for f in (files or []) if f]
 
 def leer_github(url):
     try:
         import urllib.request
-        url = url.replace('github.com','raw.githubusercontent.com').replace('/blob/','/') if 'github.com' in url.strip() and 'raw.githubusercontent' not in url else url.strip()
-        with urllib.request.urlopen(url, timeout=15) as r: return url.split('/')[-1], r.read()
+        url = url.strip()
+        if 'github.com' in url and 'raw.githubusercontent' not in url:
+            url = url.replace('github.com','raw.githubusercontent.com').replace('/blob/','/')
+        nm = url.split('/')[-1]
+        with urllib.request.urlopen(url, timeout=15) as r:
+            return nm, r.read()
     except Exception as e: return None, str(e)
 
+@st.cache_data(show_spinner="Procesando THDR Estándar…")
+def build_thdr_v71(blobs_v1, blobs_v2):
+    all_parts, err = [], []
+    for blobs, via_default in [(blobs_v1, 1), (blobs_v2, 2)]:
+        for nm, data in blobs:
+            df, msg = procesar_thdr(data, nm, via_default)
+            if not df.empty: all_parts.append(df)
+            else: err.append(f"[{nm}]: {msg}")
+    
+    if len(all_parts) > 0:
+        df_master = pd.concat(all_parts, ignore_index=True)
+        df1 = df_master[df_master['Via'] == 1].copy()
+        df2 = df_master[df_master['Via'] == 2].copy()
+        if not df1.empty and not df2.empty: df1, df2 = calcular_dwell(df1, df2)
+        return df1, df2, err
+    return pd.DataFrame(), pd.DataFrame(), err
+
+@st.cache_data(show_spinner="Cargando pasajeros…")
+def build_pax_v71(blobs_v1, blobs_v2):
+    parts, err = [], []
+    for blobs, via_default in [(blobs_v1, 1), (blobs_v2, 2)]:
+        for nm, data in blobs:
+            try: parts.append(cargar_pax(data, nm, via_default))
+            except Exception as e: err.append(f"[{nm}]: {e}")
+    if len(parts) > 0: return pd.concat(parts, ignore_index=True), err
+    return pd.DataFrame(), err
+
+def _all_blobs(f_uploader, gh_key): return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
+
+# =============================================================================
+# 13. DIAGRAMA Y DASHBOARDS (RENDERING UI REUTILIZABLE)
+# =============================================================================
 def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_extra="", active_sers_list=SER_DATA, gap_vias=200):
     W = 1200
     KM_SCALE = W / KM_TOTAL
@@ -1444,9 +1468,7 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
         indices = list(sub_sorted.index)
         for i, idx in enumerate(indices):
             xp_i = xkm(sub_sorted.loc[idx, 'km_pos'])
-            close = False
-            if i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX: close = True
-            if i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX: close = True
+            close = (i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX) or (i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX)
             label_side[idx] = ('up' if i % 2 == 0 else 'down') if close else 'up'
 
     for idx, row in df_act_plot.iterrows():
@@ -1462,11 +1484,12 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
         r_c = 18 if doble_tramo else 11
         serv, motriz, tipo = str(row.get('num_servicio', '')), str(row.get('motriz_num', '')), str(row.get('tipo_tren', 'XT-100'))
         
+        # Mapeo Visual del nombre del tren según imagen
         if tipo == 'SFE': xt_lbl = f"SFE [U-{motriz}]" if motriz else "SFE"
         elif tipo == 'XT-M': xt_lbl = f"Modular [U-{motriz}]" if motriz else "Modular"
         else: xt_lbl = f"X'Trapolis 100 [U-{motriz}]" if motriz else "X'Trapolis 100"
 
-        kwh_n, pax_v, pax_tot = float(row.get('kwh_neto', 0)), int(row.get('pax_inst', 0)), int(row.get('pax_abordo', 0))
+        kwh_n, pax_v = float(row.get('kwh_neto', 0)), int(row.get('pax_inst', 0)) 
         sep_r = row.get('sep_next', '—')
         sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
 
@@ -1494,14 +1517,16 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if modo != "▶️ Animado": st.session_state[f'play_{prefix_key}'] = False
 
     if st.session_state[f'play_{prefix_key}']:
-        st.session_state[f'min_slider_{prefix_key}'] = min(1439.0, st.session_state[f'min_slider_{prefix_key}'] + 0.2 * float(st.session_state.get(f'vs1_{prefix_key}', 1.0)))
+        step_size = 0.2 * float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
+        st.session_state[f'min_slider_{prefix_key}'] = min(1439.0, st.session_state[f'min_slider_{prefix_key}'] + step_size)
         if st.session_state[f'min_slider_{prefix_key}'] >= 1439.0: st.session_state[f'play_{prefix_key}'] = False
 
     c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
     if c1.button("−15",key=f"m15_{prefix_key}"): st.session_state[f'min_slider_{prefix_key}']=max(0.0,st.session_state[f'min_slider_{prefix_key}']-15.0); st.rerun()
     if c2.button("−1", key=f"m1_{prefix_key}"):  st.session_state[f'min_slider_{prefix_key}']=max(0.0,st.session_state[f'min_slider_{prefix_key}']-1.0);  st.rerun()
     if modo == "▶️ Animado":
-        if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"): st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']; st.rerun()
+        if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
+            st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']; st.rerun()
     if c4.button("+1", key=f"p1_{prefix_key}"):  st.session_state[f'min_slider_{prefix_key}']=min(1439.0,st.session_state[f'min_slider_{prefix_key}']+1.0);  st.rerun()
     if c5.button("+15",key=f"p15_{prefix_key}"): st.session_state[f'min_slider_{prefix_key}']=min(1439.0,st.session_state[f'min_slider_{prefix_key}']+15.0); st.rerun()
 
@@ -1509,7 +1534,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     st.session_state[f'min_slider_{prefix_key}'] = hora_m1
     hora_s1 = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
 
-    if modo == "▶️ Animado": st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
+    if modo == "▶️ Animado":
+        st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
 
     st.markdown(f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1}</span><span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; ⚙️ {pct_trac}% Tracción</span>", unsafe_allow_html=True)
 
@@ -1522,25 +1548,29 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         df_act['km_pos'] = df_act.apply(lambda r: km_at_t(r['t_ini'], r['t_fin'], hora_m1, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos')), axis=1)
         
         def _vel_real(r):
-            if abs(km_at_t(r['t_ini'], r['t_fin'], hora_m1 + 0.01, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos')) - r['km_pos']) < 0.0001: return 0.0 
-            return vel_at_km(r['km_pos'], r['Via'], use_rm)
+            km_now = r['km_pos']
+            km_next = km_at_t(r['t_ini'], r['t_fin'], hora_m1 + 0.01, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
+            if abs(km_next - km_now) < 0.0001: return 0.0 
+            return vel_at_km(km_now, r['Via'], use_rm)
             
         df_act['vel'] = df_act.apply(_vel_real, axis=1)
         df_act['km_rec'] = df_act.apply(lambda r: max(0.0, abs(r['km_pos'] - r['km_orig'])), axis=1)
         df_act['pax_inst'] = df_act.apply(lambda r: get_pax_at_km(r.get('pax_d', {}), r['km_pos'], r['Via'], r.get('pax_abordo', 0)), axis=1)
 
         def _sep_next(row, df_via):
-            km, vel = row['km_pos'], row['vel']
+            km = row['km_pos']; vel = row['vel']
             if vel < 1: return '—'
             ahead = df_via[df_via['km_pos'] > km] if row['Via'] == 1 else df_via[df_via['km_pos'] < km]
             if ahead.empty: return '—'
-            return f"{round(abs(ahead['km_pos'] - km).min()/max(1, vel)*60,1)} min ({abs(ahead['km_pos'] - km).min():.1f} km)"
+            d = abs(ahead['km_pos'] - km).min()
+            return f"{round(d/max(1, vel)*60,1)} min ({d:.1f} km)"
         
         df_act['sep_next'] = df_act.apply(lambda r: _sep_next(r, df_act[df_act['Via']==r['Via']].drop(index=r.name)), axis=1)
 
         def _make_tooltip_and_power(row):
             m_num, tipo, serv = str(row.get('motriz_num', '')), str(row.get('tipo_tren', 'XT-100')), str(row.get('num_servicio', ''))
             
+            # Nombre estetico
             if tipo == 'SFE': nombre_tren = f"SFE [U-{m_num}]" if m_num else "SFE"
             elif tipo == 'XT-M': nombre_tren = f"Modular [U-{m_num}]" if m_num else "Modular"
             else: nombre_tren = f"X'Trapolis 100 [U-{m_num}]" if m_num else "X'Trapolis 100"
@@ -1559,6 +1589,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             elif man == 'CORTE_SA': cab += "(✂️ Corte en SA)<br>"
             elif man == 'ACOPLE_SA': cab += "(🔗 Acople en SA)<br>"
             else: cab += "<br>"
+            
             cab += f"Vía {row['Via']}  |  km {row['km_pos']:.2f}  |  {int(row['vel'])} km/h<br>"
             
             state, v_kmh = get_train_state_and_speed(hora_m1, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
@@ -1568,11 +1599,13 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             f_flota = FLOTA.get(tipo, FLOTA["XT-100"])
             n_unidades = 2 if doble_tramo else 1
             tara_base = (f_flota['tara_t'] + f_flota['m_iner_t']) * n_unidades
-            pax_v, pax_tot = int(row.get('pax_inst', 0)), int(row.get('pax_abordo', 0))
-            masa_total = tara_base + (pax_v * PAX_KG) / 1000.0
+            pax_v = int(row.get('pax_inst', 0))
+            masa_pax_t = (pax_v * PAX_KG) / 1000.0
+            masa_total = tara_base + masa_pax_t
             
             v_ms = v_kmh / 3.6
-            f_davis = ((f_flota['davis_A'] * 2) + (f_flota['davis_B'] * 2 * v_kmh) + (f_flota['davis_C'] * 1.35 * (v_kmh**2))) if n_unidades == 2 else (f_flota['davis_A'] + f_flota['davis_B'] * v_kmh + f_flota['davis_C'] * (v_kmh**2))
+            if n_unidades == 2: f_davis = (f_flota['davis_A'] * 2) + (f_flota['davis_B'] * 2 * v_kmh) + (f_flota['davis_C'] * 1.35 * (v_kmh**2))
+            else: f_davis = f_flota['davis_A'] + f_flota['davis_B'] * v_kmh + f_flota['davis_C'] * (v_kmh**2)
             
             p_aux_kw = calcular_aux_dinamico(f_flota['aux_kw'] * n_unidades, hora_m1 / 60.0, pax_v, f_flota.get('cap_max', 398) * n_unidades, estacion_anio, state)
             eta_m = f_flota.get('eta_motor', 0.92)
@@ -1586,9 +1619,10 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             elif p_mech < 0: p_elec_kw = (p_mech * ETA_REGEN_NETA) + p_aux_kw
             else: p_elec_kw = p_aux_kw
             
-            for s_n, v_kw in distribuir_potencia_sers_kw(p_elec_kw, row['km_pos'], active_sers).items(): instant_ser_demands_kw[s_n] += v_kw
+            dist_kw = distribuir_potencia_sers_kw(p_elec_kw, row['km_pos'], active_sers)
+            for s_n, v_kw in dist_kw.items(): instant_ser_demands_kw[s_n] += v_kw
             
-            pax_sec = f"<b>🧑 Pax Tramo: {pax_v}</b> | Total Viaje: {pax_tot}<br>⚖️ Masa Dinámica: {masa_total:.1f} t<br>─" * 35 + "<br>"
+            pax_sec = f"<b>🧑 Pax a Bordo Tramo: {pax_v}</b><br>⚖️ Masa Dinámica: {masa_total:.1f} t<br>─" * 35 + "<br>"
             e_sec = f"⚡ <b>Energía acumulada:</b><br>NETO: {row['kwh_neto']:.1f} kWh<br>─" * 35 + "<br>"
             return cab + pax_sec + e_sec + f"↔️ <b>Siguiente:</b> {row['sep_next']}"
 
@@ -1596,14 +1630,19 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     vacios_dia = get_vacios_dia(df_dia)
     for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
-        man, t_ini = row['maniobra'], row['t_ini']
-        t_arr_bto = t_ini + 40.0 if row['Via'] == 1 else t_ini + 20.0
-        t_arr_sa = t_ini + 47.0 if row['Via'] == 1 else t_ini + 13.0
+        man = row['maniobra']
+        t_arr_bto = row['t_ini'] + 40.0 if row['Via'] == 1 else row['t_ini'] + 20.0
+        t_arr_sa = row['t_ini'] + 47.0 if row['Via'] == 1 else row['t_ini'] + 13.0
+        dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
         
-        if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-        elif man == 'ACOPLE_BTO': vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-        elif man == 'CORTE_SA': vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
-        elif man == 'ACOPLE_SA': vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+        if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']:
+            vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+        elif man == 'ACOPLE_BTO':
+            vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+        elif man == 'CORTE_SA':
+            vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+        elif man == 'ACOPLE_SA':
+            vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
 
     vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
     vacio_count = len(vacios_hasta_ahora)
@@ -1616,38 +1655,56 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     for v in vacios_hasta_ahora:
         is_local_move = (v.get('km_orig') == v.get('km_dest'))
         km_fake_fin = v['km_orig'] + v['dist'] if is_local_move else v['km_dest']
+        via_vacia = 1 if v['km_orig'] <= km_fake_fin else 2
         
         trc_v, aux_v, reg_v, _, _, t_horas_v = simular_tramo_termodinamico(
             v['tipo'], v.get('doble', False), v['km_orig'], km_fake_fin, 
-            1 if v['km_orig'] <= km_fake_fin else 2, pct_trac, use_rm, use_pend if not is_local_move else False, 
+            via_vacia, pct_trac, use_rm, use_pend if not is_local_move else False, 
             None, {}, 0, 20.0 if is_local_move else None, None, estacion_anio, v.get('t_asigned', 480.0)
         )
+        
         e_pant_vacio = trc_v + aux_v - reg_v
+        
         if active_sers:
-            for s_name, e_val in distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers).items(): ser_accum_1[s_name] += e_val
+            distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
+            for s_name, e_val in distrib_sers.items(): ser_accum_1[s_name] += e_val
+                
         vacio_kwh_total += e_pant_vacio
         energy_by_fleet[v['tipo']] += e_pant_vacio
 
-    t_regen_acum, t_trac, t_aux, t_regen, t_reostato = 0.0, 0.0, 0.0, 0.0, 0.0
+    t_regen_acum = 0.0
+    t_trac, t_aux, t_regen, t_reostato = 0.0, 0.0, 0.0, 0.0
 
     for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
         t_eval = min(hora_m1, r['t_fin'])
+        frac = (t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini'])
         km_now = km_at_t(r['t_ini'], r['t_fin'], t_eval, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
-        e_pantografo_frac = (r['kwh_viaje_trac'] + r['kwh_viaje_aux'] - r['kwh_viaje_regen']) * ((t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini']))
-        for s_name, e_val in distribuir_energia_sers(e_pantografo_frac, (t_eval - r['t_ini']) / 60.0, r['km_orig'], km_now, active_sers).items(): ser_accum_1[s_name] += e_val 
+        
+        e_pantografo_frac = (r['kwh_viaje_trac'] + r['kwh_viaje_aux'] - r['kwh_viaje_regen']) * frac
+        t_horas_frac = (t_eval - r['t_ini']) / 60.0
+        
+        distrib_sers = distribuir_energia_sers(e_pantografo_frac, t_horas_frac, r['km_orig'], km_now, active_sers)
+        for s_name, e_val in distrib_sers.items(): ser_accum_1[s_name] += e_val 
 
     df_acum = df_dia_e[df_dia_e['t_ini'] <= hora_m1]
     if not df_acum.empty:
-        t_trac, t_aux, t_regen, t_reostato = df_acum['kwh_viaje_trac'].sum(), df_acum['kwh_viaje_aux'].sum(), df_acum['kwh_viaje_regen'].sum(), df_acum['kwh_reostato'].sum()
+        t_trac = df_acum['kwh_viaje_trac'].sum()
+        t_aux = df_acum['kwh_viaje_aux'].sum()
+        t_regen = df_acum['kwh_viaje_regen'].sum()
+        t_reostato = df_acum['kwh_reostato'].sum()
         t_regen_acum = t_regen
+
         for f_type in ['XT-100', 'XT-M', 'SFE']:
             sub = df_acum[df_acum['tipo_tren'] == f_type]
             if not sub.empty: energy_by_fleet[f_type] += sub['kwh_viaje_neto'].sum()
 
     total_ser_kwh_44kv = sum(max(0.0, val) for val in ser_accum_1.values()) / ETA_SER_RECTIFICADOR
     t_elapsed_h = max(0.001, hora_m1 / 60.0)
-    flujo_avg = calcular_flujo_ac_nodo({k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elapsed_h for k, v in ser_accum_1.items()})
-    seat_accum_1 = (total_ser_kwh_44kv + flujo_avg['P_loss_kw'] * (1.15**2) * t_elapsed_h) / 0.99
+    avg_demands_kw = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elapsed_h for k, v in ser_accum_1.items()}
+    flujo_avg = calcular_flujo_ac_nodo(avg_demands_kw)
+    total_ac_loss_kwh = flujo_avg['P_loss_kw'] * (1.15**2) * t_elapsed_h
+
+    seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
     st.plotly_chart(draw_diagram(df_act, {k: max(0.0, v) for k, v in ser_accum_1.items()}, seat_accum_1, hora_s1, "", active_sers, gap_vias), use_container_width=True)
 
@@ -1656,6 +1713,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
     n_v1   = int((df_act['Via']==1).sum()) if not df_act.empty else 0
     n_v2   = int((df_act['Via']==2).sum()) if not df_act.empty else 0
+    pax_t  = int(df_act['pax_inst'].sum()) if not df_act.empty else 0
     kwh_t  = round(df_act['kwh_neto'].sum(),0) if (not df_act.empty and 'kwh_neto' in df_act.columns) else 0
     regen_t= round(t_regen_acum, 0)
     trenkm = round(df_act['tren_km'].sum(),1) if (not df_act.empty and 'tren_km' in df_act.columns) else 0.0
@@ -1670,19 +1728,20 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     r1d.metric("🚈 Doble (Original)", n_d)
     
     r2a,r2b,r2c,r2d = st.columns(4)
-    r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{int(df_act['pax_inst'].sum()) if not df_act.empty else 0:,}")
+    r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{pax_t:,}")
     r2b.metric("⚡ kWh neto", f"{kwh_t:,.0f}", f"−{regen_t:,.0f} regen util")
     r2c.metric("📏 Tren-km Inst.", f"{trenkm:,.1f}")
     r2d.metric("💡 IDE inst.", f"{ide_i:.3f} kWh/km")
 
     st.divider()
     st.markdown("#### 🔌 Cargabilidad Instantánea de Subestaciones (Squeeze Control)")
+    st.caption("Muestra la demanda real en kW que los trenes exigen a la red en este mismo segundo. Los rectificadores son unidireccionales (Diodos): si el valor es 0 kW, la subestación está bloqueando energía inversa y el exceso se quema en las resistencias del tren (Reóstato).")
     
     if not active_sers:
         st.info("No hay SERs activas para monitorear.")
     else:
         flujo_ac_dc = calcular_flujo_ac_nodo(instant_ser_demands_kw)
-        st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas AC (I²R) este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas térmicas AC (I²R) de la red troncal en este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
         cols_ser = st.columns(len(active_sers))
         for i, ser_info in enumerate(active_sers):
             s_name = ser_info[1]
@@ -1693,15 +1752,23 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             vdc_actual = flujo_ac_dc.get(s_name, {}).get('Vdc', 3000.0)
             pct_carga = (dem_kw / cap_kw) * 100.0
             
-            if dem_kw == 0.0 and dem_kw_bruta < -10.0: color_bar, texto_estado = "#9E9E9E", "Bloqueo Diodos (Quemando en Reóstato)"
-            elif vdc_actual < 2600.0: color_bar, texto_estado = "#C62828", "⚠️ SQUEEZE CONTROL (Bajo Voltaje)"
-            elif vdc_actual < 2850.0: color_bar, texto_estado = "#F9A825", "Estrés Moderado (Caída AC)"
-            elif pct_carga <= 65: color_bar, texto_estado = "#1565C0", "Carga Óptima"
-            else: color_bar, texto_estado = "#F9A825", "Capacidad exigida"
+            if dem_kw == 0.0 and dem_kw_bruta < -10.0:
+                color_bar, texto_estado = "#9E9E9E", "Bloqueo Diodos (Quemando en Reóstato)"
+            elif vdc_actual < 2600.0:
+                color_bar, texto_estado = "#C62828", "⚠️ SQUEEZE CONTROL (Bajo Voltaje)"
+            elif vdc_actual < 2850.0:
+                color_bar, texto_estado = "#F9A825", "Estrés Moderado (Caída AC)"
+            elif pct_carga <= 65:
+                color_bar, texto_estado = "#1565C0", "Carga Óptima"
+            else:
+                color_bar, texto_estado = "#F9A825", "Capacidad exigida"
                 
             with cols_ser[i]:
                 st.markdown(f"**{s_name}** ({cap_kw/1000:.1f} MVA)")
-                st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div><div style='font-size:13px; font-family:monospace; margin-bottom:4px;'><span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br><span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div><div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div><span style='font-size:11px; color:#666;'>Factor Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:13px; font-family:monospace; margin-bottom:4px;'><span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br><span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-size:11px; color:#666;'>Factor Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
 
     df_comp = df_dia_e[df_dia_e['t_fin']<=hora_m1]
     df_inic = df_dia_e[df_dia_e['t_ini']<=hora_m1]
@@ -1758,6 +1825,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     a4.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}"); a5.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_dia_total:,}"); a6.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
 
     st.divider()
+    st.markdown("#### 🚉 Maniobras en Vacío (Cochera El Belloto y Transiciones)")
+    st.caption("Consumo físico por tránsitos no comerciales. Incluye el carrusel a Velocidad de Consigna y restricción a 20 km/h en patios. *La energía ya está sumada a la demanda total de las SERs.*")
     v1, v2, v3 = st.columns(3)
     v1.metric("Maniobras en Vacío (Carrusel)", vacio_count)
     v2.metric("Kilometraje Improductivo", f"{vacio_km_total:,.1f} Tren-km")
@@ -1769,6 +1838,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if not df_dia.empty:
         with st.expander("📊 Resumen de Energía del Día y Comportamiento de Subestaciones", expanded=True):
             st.markdown("### 🚄 Auditoría de Consumo Operativo")
+            st.caption("Análisis termodinámico detallado. Evalúa el costo energético directo separando el impacto de la tecnología (Flota) y la geografía (Trayecto).")
+            
             if not df_dia_e.empty:
                 res_flota = df_dia_e.groupby('tipo_tren').agg(viajes=('_id', 'count'), trac_kwh=('kwh_viaje_trac', 'sum'), regen_kwh=('kwh_viaje_regen', 'sum'), neto_kwh=('kwh_viaje_neto', 'sum')).reset_index()
                 res_flota['neto_prom'] = res_flota['neto_kwh'] / res_flota['viajes']
@@ -1794,12 +1865,14 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 st.markdown("##### 🚆 Resumen Consolidado por Familia de Tren (Flota)")
                 st.dataframe(res_flota, use_container_width=True)
                 st.markdown("##### 🔀 Matriz Detallada: Trayectos vs Flota (Auditoría Ejecutiva con IDE)")
+                st.caption("Desglose exacto de cuántos trenes de cada familia operaron un trayecto específico, su consumo total en esa ruta, el promedio unitario y su eficiencia kilométrica (IDE).")
                 st.dataframe(pd.DataFrame(pivot_data), use_container_width=True)
 
             st.divider()
+            st.markdown("### Requerimientos Aguas Arriba (SER & SEAT)")
             sr1, sr2 = st.columns(2)
-            with sr1: st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh**")
-            with sr2: st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh**")
+            with sr1: st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh** \n*Considera el despacho geográfico de energía y caída de tensión dinámica a 3000 Vcc.*")
+            with sr2: st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh** \n*Considera pérdidas dinámicas de transmisión AC 44kV (I²R) integradas y eficiencia del transformador de potencia (99%).*")
 
             fig_pie = go.Figure(data=[go.Pie(labels=['Tracción', 'Auxiliar', 'Regeneración Útil', 'Pérdida Reóstato'], values=[t_trac, t_aux, t_regen, t_reostato], hole=.3, marker_colors=['#1565C0', '#F9A825', '#2E7D32', '#C62828'])])
             fig_pie.update_layout(title="Distribución de Energía (Trenes + Vacíos)")
@@ -1819,9 +1892,11 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             with ec2: st.plotly_chart(fig_hora, use_container_width=True)
 
     if st.session_state[f'play_{prefix_key}']:
-        time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
-        st.rerun()
+        time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0))); st.rerun()
 
+# =============================================================================
+# 14. EJECUCIÓN PRINCIPAL, SIDEBAR Y ROUTING DE TABS
+# =============================================================================
 def main():
     with st.sidebar:
         st.header("📂 Archivos Base")
@@ -1846,6 +1921,7 @@ def main():
                                 elif "v2" in lnm or "via2" in lnm: k = "gh_blobs_px2" if "pax" in lnm or "pasajero" in lnm or "export" in lnm else "gh_blobs_v2"
                                 elif "pax" in lnm or "pasajero" in lnm or "export" in lnm: k = "gh_blobs_px1"
                                 else: k = "gh_blobs_v1" 
+                            
                             if k not in st.session_state: st.session_state[k] = []
                             st.session_state[k].append((nm, data_or_err))
                             success_count += 1
@@ -1899,13 +1975,11 @@ def main():
     def _all_blobs_internal(f_uploader, gh_key): 
         return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
 
-    b1 = _all_blobs_internal(f_v1, "gh_blobs_v1")
-    b2 = _all_blobs_internal(f_v2, "gh_blobs_v2")
-    bx1 = _all_blobs_internal(f_px1, "gh_blobs_px1")
-    bx2 = _all_blobs_internal(f_px2, "gh_blobs_px2")
-    
-    df1, df2, err_t = build_thdr_v71(b1, b2)
-    df_px, err_p = build_pax_v71(bx1, bx2)
+    b1=_all_blobs_internal(f_v1,"gh_blobs_v1"); b2=_all_blobs_internal(f_v2,"gh_blobs_v2")
+    bx1=_all_blobs_internal(f_px1,"gh_blobs_px1"); bx2=_all_blobs_internal(f_px2,"gh_blobs_px2")
+    df1,df2,err_t=build_thdr_v71(b1,b2)
+    df_px,err_p  =build_pax_v71(bx1,bx2)
+    perfiles_pax = get_perfiles_pax(df_px)
 
     with st.sidebar:
         if err_t:
@@ -1921,8 +1995,7 @@ def main():
             df_all = df_all.drop_duplicates(subset=['_id', 't_ini', 'Via'])
             
             if not df_px.empty:
-                if 'Tren_Clean' not in df_px.columns: 
-                    df_px['Tren_Clean'] = df_px['Tren'].apply(clean_id) if 'Tren' in df_px.columns else ''
+                if 'Tren_Clean' not in df_px.columns: df_px['Tren_Clean'] = df_px['Tren'].apply(clean_id) if 'Tren' in df_px.columns else ''
                 with st.spinner("Integrando datos reales de pasajeros..."):
                     pax_res = df_all.apply(lambda r: match_pax(r, df_px), axis=1)
                     df_all['pax_d'] = [x[0] for x in pax_res]
@@ -1933,43 +2006,44 @@ def main():
                     df_all['pax_max'] = df_all['pax_abordo']
             else:
                 df_all['pax_d'] = [{}] * len(df_all)
-                df_all['pax_max'] = 0
-                df_all['pax_abordo'] = 0
-                df_all['hora_origen_pax'] = '--:--:--'
-                df_all['nro_thdr_pax'] = 'No Detectado'
-                df_all['pax_row_idx'] = -1
+                df_all['pax_max'], df_all['pax_abordo'] = 0, 0
+                df_all['hora_origen_pax'], df_all['nro_thdr_pax'], df_all['pax_row_idx'] = '--:--:--', 'No Detectado', -1
                 
             df_all['maniobra'] = None
             if n_cortes_v1 > 0:
                 v1_cands = df_all[(df_all['Via'] == 1) & (df_all['doble'] == True) & (df_all['km_orig'] < 25.0) & (df_all['km_dest'] > 26.0) & (df_all['maniobra'].isnull())].copy()
                 if not v1_cands.empty:
                     v1_cands['dist_valle'] = v1_cands['t_ini'].apply(lambda t: min(abs(t - 600), abs(t - 1230)))
-                    df_all.loc[df_all['_id'].isin(v1_cands.sort_values('dist_valle').head(n_cortes_v1)['_id'].values), 'maniobra'] = 'CORTE_BTO'
+                    corte_ids = v1_cands.sort_values('dist_valle').head(n_cortes_v1)['_id'].values
+                    df_all.loc[df_all['_id'].isin(corte_ids), 'maniobra'] = 'CORTE_BTO'
             if n_cortes_pu_sa_v1 > 0:
                 v1_pu_sa_cands = df_all[(df_all['Via'] == 1) & (df_all['doble'] == True) & (df_all['km_orig'] < 25.0) & (df_all['km_dest'] >= 28.5) & (df_all['km_dest'] <= 29.5) & (df_all['maniobra'].isnull())].copy()
                 if not v1_pu_sa_cands.empty:
                     v1_pu_sa_cands['dist_valle'] = v1_pu_sa_cands['t_ini'].apply(lambda t: min(abs(t - 600), abs(t - 1230)))
-                    df_all.loc[df_all['_id'].isin(v1_pu_sa_cands.sort_values('dist_valle').head(n_cortes_pu_sa_v1)['_id'].values), 'maniobra'] = 'CORTE_PU_SA_BTO'
+                    corte_pu_sa_ids = v1_pu_sa_cands.sort_values('dist_valle').head(n_cortes_pu_sa_v1)['_id'].values
+                    df_all.loc[df_all['_id'].isin(corte_pu_sa_ids), 'maniobra'] = 'CORTE_PU_SA_BTO'
             if n_acoples_v2 > 0:
                 v2_cands = df_all[(df_all['Via'] == 2) & (df_all['km_orig'] > 26.0) & (df_all['km_dest'] < 25.0) & (df_all['maniobra'].isnull())].copy()
                 if not v2_cands.empty:
                     v2_cands['dist_punta'] = v2_cands['t_ini'].apply(lambda t: min(abs(t - 390), abs(t - 1050)))
-                    df_all.loc[df_all['_id'].isin(v2_cands.sort_values('dist_punta').head(n_acoples_v2)['_id'].values), 'maniobra'] = 'ACOPLE_BTO'
+                    acople_ids = v2_cands.sort_values('dist_punta').head(n_acoples_v2)['_id'].values
+                    df_all.loc[df_all['_id'].isin(acople_ids), 'maniobra'] = 'ACOPLE_BTO'
             if n_cortes_sa_v1 > 0:
                 v1_sa_cands = df_all[(df_all['Via'] == 1) & (df_all['doble'] == True) & (df_all['km_orig'] < 29.0) & (df_all['km_dest'] > 30.0) & (df_all['maniobra'].isnull())].copy()
                 if not v1_sa_cands.empty:
                     v1_sa_cands['dist_valle'] = v1_sa_cands['t_ini'].apply(lambda t: min(abs(t - 600), abs(t - 1230)))
-                    df_all.loc[df_all['_id'].isin(v1_sa_cands.sort_values('dist_valle').head(n_cortes_sa_v1)['_id'].values), 'maniobra'] = 'CORTE_SA'
+                    corte_sa_ids = v1_sa_cands.sort_values('dist_valle').head(n_cortes_sa_v1)['_id'].values
+                    df_all.loc[df_all['_id'].isin(corte_sa_ids), 'maniobra'] = 'CORTE_SA'
             if n_acoples_sa_v2 > 0:
                 v2_sa_cands = df_all[(df_all['Via'] == 2) & (df_all['km_orig'] > 30.0) & (df_all['km_dest'] < 29.0) & (df_all['maniobra'].isnull())].copy()
                 if not v2_sa_cands.empty:
                     v2_sa_cands['dist_punta'] = v2_sa_cands['t_ini'].apply(lambda t: min(abs(t - 390), abs(t - 1050)))
-                    df_all.loc[df_all['_id'].isin(v2_sa_cands.sort_values('dist_punta').head(n_acoples_sa_v2)['_id'].values), 'maniobra'] = 'ACOPLE_SA'
+                    acople_sa_ids = v2_sa_cands.sort_values('dist_punta').head(n_acoples_sa_v2)['_id'].values
+                    df_all.loc[df_all['_id'].isin(acople_sa_ids), 'maniobra'] = 'ACOPLE_SA'
 
             df_all['tren_km'] = df_all.apply(calc_tren_km_real_general, axis=1)
             st.success(f"✅ {len(df_all)} despachos operativos históricos cargados.")
-        else:
-            df_all = pd.DataFrame()
+        else: df_all = pd.DataFrame()
 
     fechas = sorted(list(set([str(d) for d in df_all['Fecha_str'].unique() if str(d) != '2026-01-01' and pd.notna(d)]))) if not df_all.empty else []
 
@@ -1981,52 +2055,49 @@ def main():
         
         col_p1, col_p2 = st.columns([1, 2])
         with col_p1:
+            tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan")
+            pax_promedio_viaje = {"Laboral": 280, "Sábado": 160, "Domingo/Festivo": 110}[tipo_dia_plan]
             estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan")
-            df_px_filtered = pd.DataFrame()
-            nombre_perfil = "Estático (150 pax)"
-            
-            if not df_px.empty:
-                fechas_disp = sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]])
-                fechas_sel_plan = st.multiselect("📅 Fechas para Perfil de Demanda (Promedio)", fechas_disp, default=[fechas_disp[0]] if fechas_disp else None, key="ms_pax_plan")
-                if fechas_sel_plan:
-                    st.success(f"✅ Extrayendo demanda operativa de {len(fechas_sel_plan)} día(s).")
-                    nombre_perfil = f"Pax Real ({len(fechas_sel_plan)} días)"
-                    df_px_filtered = df_px[df_px['Fecha_s'].isin(fechas_sel_plan)].copy()
-                    for c in PAX_COLS + ['CargaMax', 't_ini_p']: 
-                        df_px_filtered[c] = pd.to_numeric(df_px_filtered[c], errors='coerce').fillna(0)
-                else: 
-                    st.warning("⚠️ Selecciona al menos una fecha.")
-            else: 
-                st.warning("⚠️ Sin datos de pasajeros cargados. Usando perfil estático: 150 pax")
+            if perfiles_pax: st.success("✅ Perfiles dinámicos listos.")
+            else: st.warning(f"⚠️ Perfil estático: {pax_promedio_viaje} pax")
             
         with col_p2:
             modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética", "Laboratorio (Tramo Único)"], horizontal=True)
             if modo_plan == "Matriz Sintética":
-                if 'df_plan' not in st.session_state: 
+                if 'df_plan' not in st.session_state:
                     st.session_state['df_plan'] = pd.DataFrame([{"Origen": "Puerto", "Destino": "Limache", "Flota": "XT-100", "Configuración": "Doble", "Cantidad": 40}])
                 df_plan_edit = st.data_editor(st.session_state['df_plan'], num_rows="dynamic", use_container_width=True)
             
             elif modo_plan == "Planilla Maestra (Subir CSV/Excel)":
                 archivo_planilla = st.file_uploader("📂 Sube tu Planilla Maestra (.csv, .xlsx, .xls)", type=['csv', 'xlsx', 'xls'])
+                df_plan_edit = pd.DataFrame()
                 if archivo_planilla:
                     df_temp, msg = parsear_planilla_maestra(archivo_planilla.getvalue(), archivo_planilla.name)
-                    if df_temp.empty: 
-                        st.error(f"Error procesando: {msg}")
+                    if df_temp.empty: st.error(f"Error procesando: {msg}")
                     else:
                         st.success("✅ Planilla decodificada. Distribuye la cantidad de flota por trayecto (Rolling Stock Rostering):")
-                        rutas_unicas = list(df_temp['svc_type'].value_counts().keys())
+                        viajes_por_ruta = df_temp['svc_type'].value_counts().to_dict()
+                        rutas_unicas = list(viajes_por_ruta.keys())
+                        
                         if 'flota_map_v2' not in st.session_state or set(st.session_state['flota_map_v2']['Ruta']) != set(rutas_unicas):
-                            st.session_state['flota_map_v2'] = pd.DataFrame([{"Ruta": r, "Total Viajes": df_temp['svc_type'].value_counts()[r], "XT-100": df_temp['svc_type'].value_counts()[r], "XT-M": 0, "SFE": 0} for r in rutas_unicas])
+                            st.session_state['flota_map_v2'] = pd.DataFrame([{"Ruta": r, "Total Viajes": viajes_por_ruta[r], "XT-100": viajes_por_ruta[r], "XT-M": 0, "SFE": 0} for r in rutas_unicas])
                         
-                        df_flota_edit = st.data_editor(st.session_state['flota_map_v2'], hide_index=True, use_container_width=True)
-                        if not df_flota_edit[df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE'] != df_flota_edit['Total Viajes']].empty: 
-                            st.warning("⚠️ Hay trayectos donde la suma no coincide con el total. El remanente será XT-100.")
+                        st.caption("Ajusta las cantidades para cada tipo de tren. El sistema asignará el modelo cronológicamente.")
+                        df_flota_edit = st.data_editor(
+                            st.session_state['flota_map_v2'],
+                            column_config={"Ruta": st.column_config.TextColumn("Ruta", disabled=True), "Total Viajes": st.column_config.NumberColumn("Total Viajes", disabled=True), "XT-100": st.column_config.NumberColumn("Cant. XT-100", min_value=0, step=1), "XT-M": st.column_config.NumberColumn("Cant. XT-M", min_value=0, step=1), "SFE": st.column_config.NumberColumn("Cant. SFE", min_value=0, step=1)},
+                            hide_index=True, use_container_width=True
+                        )
                         
+                        df_flota_edit['Asignados'] = df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE']
+                        if not df_flota_edit[df_flota_edit['Asignados'] != df_flota_edit['Total Viajes']].empty:
+                            st.warning("⚠️ Hay trayectos donde la suma de trenes asignados no coincide con el total. El remanente se despachará como XT-100.")
+                            
                         st.session_state['temp_df_plan'] = df_temp
                         st.session_state['temp_flota_edit'] = df_flota_edit
             
             elif modo_plan == "Laboratorio (Tramo Único)":
-                tipo_mov_lab = st.radio("Modo de Operación", ["Servicio Comercial (Con Paradas)", "Maniobra en Vacío (Pasa de largo a 30 km/h)"], horizontal=True)
+                tipo_mov_lab = st.radio("Modo de Operación", ["Servicio Comercial (Con Paradas)", "Maniobra en Vacío (Pasa de largo a 30 km/h en andenes)"], horizontal=True)
                 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
                 with col_s1: sb_orig = st.selectbox("Estación Origen", ESTACIONES, key="sb_o")
                 with col_s2: sb_dest = st.selectbox("Estación Destino", ESTACIONES, index=len(ESTACIONES)-1, key="sb_d")
@@ -2036,21 +2107,18 @@ def main():
                 if st.button("⚡ Simular Tramo", use_container_width=True):
                     if sb_orig != sb_dest:
                         idx_o, idx_d = ESTACIONES.index(sb_orig), ESTACIONES.index(sb_dest)
-                        km_o, km_d = KM_ACUM[idx_o], KM_ACUM[idx_d]
                         via_sb = 1 if idx_o < idx_d else 2
+                        km_o, km_d = KM_ACUM[idx_o], KM_ACUM[idx_d]
                         es_vacio_flag = "Vacío" in tipo_mov_lab
                         nodos_sb = [(0.0, KM_ACUM[idx_o]), (0.0, KM_ACUM[idx_d])] if es_vacio_flag else [(0.0, KM_ACUM[i]) for i in (range(idx_o, idx_d + 1) if via_sb == 1 else range(idx_o, idx_d - 1, -1))]
-                        
                         with st.spinner("Calculando termodinámica..."):
                             trc_sb, aux_sb, reg_sb, _, neto_sb, th_sb = simular_tramo_termodinamico(sb_flota, False, km_o, km_d, via_sb, pct_trac, use_rm, use_pend, nodos_sb, {}, sb_pax, None, None, estacion_anio_plan, 480.0, es_vacio_flag)
-                        
                         distrib_sb = distribuir_energia_sers(neto_sb, th_sb, km_o, km_d, active_sers)
                         tot_ser_sb = sum(max(0.0, v) for v in distrib_sb.values()) / ETA_SER_RECTIFICADOR
                         avg_dem_sb = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / max(0.001, th_sb) for k, v in distrib_sb.items()}
                         loss_sb = calcular_flujo_ac_nodo(avg_dem_sb)['P_loss_kw'] * (1.15**2) * max(0.001, th_sb)
                         seat_sb = (tot_ser_sb + loss_sb) / 0.99
                         ide_sb = seat_sb / max(0.001, abs(km_d - km_o))
-                        
                         st.success(f"Simulación exitosa: {sb_orig} ➔ {sb_dest} | Distancia: {abs(km_d - km_o):.2f} km")
                         c_sb1, c_sb2, c_sb3 = st.columns(3)
                         c_sb1.metric("⏱️ Tiempo de Viaje", f"{th_sb * 60:.1f} min")
@@ -2064,33 +2132,24 @@ def main():
                     df_sintetico_list = []
                     for idx, row in df_plan_edit.iterrows():
                         if row['Cantidad'] <= 0 or row['Origen'] == row['Destino']: continue
-                        i_o, i_d = ESTACIONES.index(row['Origen']), ESTACIONES.index(row['Destino'])
-                        via = 1 if i_o < i_d else 2
-                        nodos_sint = [(0.0, KM_ACUM[i]) for i in (range(i_o, i_d + 1) if via==1 else range(i_o, i_d - 1, -1))]
-                        k_o, k_d = KM_ACUM[i_o], KM_ACUM[i_d]
-                        svc_t = f"{EC[i_o]}-{EC[i_d]}"
-                        interval = (1350 - 360) / row['Cantidad']
-                        
+                        via = 1 if ESTACIONES.index(row['Origen']) < ESTACIONES.index(row['Destino']) else 2
+                        nodos_sint = [(0.0, KM_ACUM[i]) for i in (range(ESTACIONES.index(row['Origen']), ESTACIONES.index(row['Destino']) + 1) if via==1 else range(ESTACIONES.index(row['Origen']), ESTACIONES.index(row['Destino']) - 1, -1))]
                         for i in range(int(row['Cantidad'])):
-                            df_sintetico_list.append({
-                                '_id': f"SINT_{idx}_{i}", 't_ini': 360 + i * interval, 'Via': via, 
-                                'km_orig': k_o, 'km_dest': k_d, 'nodos': nodos_sint, 
-                                'tipo_tren': row['Flota'], 'doble': row['Configuración'] == "Doble", 
-                                'num_servicio': f"VIRT_{idx}_{i}", 'maniobra': None, 'svc_type': svc_t
-                            })
+                            df_sintetico_list.append({'_id': f"SINT_{i}", 't_ini': 360 + i * ((1350-360)/row['Cantidad']), 'Via': via, 'km_orig': KM_ACUM[ESTACIONES.index(row['Origen'])], 'km_dest': KM_ACUM[ESTACIONES.index(row['Destino'])], 'nodos': nodos_sint, 'tipo_tren': row['Flota'], 'doble': row['Configuración'] == "Doble", 'num_servicio': f"VIRT_{i}", 'maniobra': None, 'svc_type': f"{EC[ESTACIONES.index(row['Origen'])]}-{EC[ESTACIONES.index(row['Destino'])]}"})
                     df_sint = pd.DataFrame(df_sintetico_list)
                 else:
                     if 'temp_df_plan' not in st.session_state: st.stop()
-                    df_sint = st.session_state['temp_df_plan'].copy().sort_values('t_ini')
+                    df_sint = st.session_state['temp_df_plan'].copy()
+                    df_flota_edit = st.session_state['temp_flota_edit']
+                    df_sint = df_sint.sort_values('t_ini')
                     
                     asignaciones = {}
-                    for _, r in st.session_state['temp_flota_edit'].iterrows():
+                    for _, r in df_flota_edit.iterrows():
                         asignaciones[r['Ruta']] = ['XT-100']*int(r.get('XT-100', 0)) + ['XT-M']*int(r.get('XT-M', 0)) + ['SFE']*int(r.get('SFE', 0))
                         
                     def asignar_tren(ruta):
                         if ruta in asignaciones and len(asignaciones[ruta]) > 0: return asignaciones[ruta].pop(0)
                         return 'XT-100'
-                        
                     df_sint['tipo_tren'] = df_sint['svc_type'].apply(asignar_tren)
 
                 if df_sint.empty: st.stop()
@@ -2098,131 +2157,104 @@ def main():
                 st.session_state['simulacion_plan_lista'] = True
 
         if st.session_state.get('simulacion_plan_lista', False) and 'raw_plan_df' in st.session_state:
-            df_sint_final, df_sint_e = procesar_planificador_reactivo(st.session_state['raw_plan_df'], df_px_filtered, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen)
+            df_sint_final, df_sint_e = procesar_planificador_reactivo(st.session_state['raw_plan_df'], tipo_dia_plan, pax_promedio_viaje, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen, perfiles_pax)
+            pax_tot = int(df_sint_final['pax_abordo'].sum())
             st.divider()
-            render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_sint_final['pax_abordo'].sum()))
+            render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {tipo_dia_plan}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=pax_tot)
             
             st.divider()
             st.markdown("### 📅 Proyección Estratégica Mensual (Capex/Opex)")
             c1, c2, c3 = st.columns(3)
-            with c1: d_lab = st.number_input("Días Laborales en el mes", 0, 31, 22)
-            with c2: d_sab = st.number_input("Sábados en el mes", 0, 5, 4)
-            with c3: d_dom = st.number_input("Domingos/Festivos", 0, 10, 4)
+            with c1: dias_laborales = st.number_input("Días Laborales en el mes", 0, 31, 22)
+            with c2: dias_sabados = st.number_input("Sábados en el mes", 0, 5, 4)
+            with c3: dias_domingos = st.number_input("Domingos/Festivos", 0, 10, 4)
             
-            total_dias_mes = d_lab + d_sab + d_dom
+            total_dias_mes = dias_laborales + dias_sabados + dias_domingos
             ser_accum_plan = {name: 0.0 for _, name in active_sers}
             for _, r in df_sint_e.iterrows():
-                for s, v in distribuir_energia_sers(r['kwh_viaje_neto'], (r['t_fin']-r['t_ini'])/60.0, r['km_orig'], r['km_dest'], active_sers).items(): 
-                    ser_accum_plan[s] += v
+                for s, v in distribuir_energia_sers(r['kwh_viaje_neto'], (r['t_fin']-r['t_ini'])/60.0, r['km_orig'], r['km_dest'], active_sers).items(): ser_accum_plan[s] += v
             
             tot_44_plan = sum(max(0.0, v) for v in ser_accum_plan.values()) / ETA_SER_RECTIFICADOR
             t_elap_plan = max(0.001, (df_sint_e['t_fin'].max() - df_sint_e['t_ini'].min()) / 60.0)
-            
             loss_plan = calcular_flujo_ac_nodo({k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap_plan for k, v in ser_accum_plan.items()})['P_loss_kw'] * (1.15**2) * t_elap_plan
-            seat_dia = (tot_44_plan + loss_plan) / 0.99
             
+            seat_dia = (tot_44_plan + loss_plan) / 0.99
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("⚡ Energía Facturable Mensual", f"{seat_dia * total_dias_mes:,.0f} kWh")
             cm2.metric("💡 IDE Promedio Mensual", f"{seat_dia / max(1.0, df_sint_e['tren_km'].sum()):.3f} kWh/km")
-            cm3.metric("🧑‍🤝‍🧑 Pasajeros Mensuales", f"{int(df_sint_final['pax_abordo'].sum()) * total_dias_mes:,} pax")
+            cm3.metric("🧑‍🤝‍🧑 Pasajeros Mensuales", f"{pax_tot * total_dias_mes:,} pax")
             cm4.metric("💰 Costo Energía Mensual", f"${seat_dia * total_dias_mes * 100:,.0f} CLP")
 
     with tab_mapa:
-        if df_all.empty: 
-            st.warning("⚠️ Requiere carga de THDR.")
+        if df_all.empty: st.warning("⚠️ Requiere carga de THDR.")
         else:
             fecha_sel = st.selectbox("📅 Fecha Operativa (THDR)", fechas, key="fs_hist")
-            df_dia = df_all[df_all['Fecha_str'] == fecha_sel].copy()
-            
+            df_dia = df_all[df_all['Fecha_str']==fecha_sel].copy()
             dict_regen = calcular_receptividad_por_headway(df_dia) if use_regen and "Probabilístico" in tipo_regen else (precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio) if use_regen else {})
             df_dia_e = calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_regen, dict_regen, estacion_anio)
-            
             df_dia_px_total = df_px[df_px['Fecha_s'] == fecha_sel] if not df_px.empty and 'Fecha_s' in df_px.columns else pd.DataFrame()
             pax_dia_tot = int(pd.to_numeric(df_dia_px_total['CargaMax'], errors='coerce').fillna(0).sum()) if not df_dia_px_total.empty else 0
-            
             render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, "mapa", gap_vias, pax_dia_tot)
 
     with tab_datos:
-        if df_px.empty: 
-            st.warning("⚠️ Sin datos de pasajeros.")
+        if df_px.empty: st.warning("⚠️ Sin datos de pasajeros.")
         else:
-            fechas_disp = sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]])
-            fecha_sel_pax = st.multiselect("📅 Selecciona Fechas a evaluar (Si eliges varias, se promediarán)", fechas_disp, default=[fechas_disp[0]] if fechas_disp else None)
+            fechas_disponibles = sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]])
+            fecha_sel_pax = st.multiselect("📅 Selecciona Fechas a evaluar (Si eliges varias, se promediarán)", fechas_disponibles, default=[fechas_disponibles[0]] if fechas_disponibles else None)
             
-            if not fecha_sel_pax: 
-                st.info("Selecciona al menos una fecha.")
+            if not fecha_sel_pax: st.info("Selecciona al menos una fecha.")
             else:
                 df_dia_pax = df_px[df_px['Fecha_s'].isin(fecha_sel_pax)].copy()
                 df_dia_pax['t_ini_p'] = pd.to_numeric(df_dia_pax['t_ini_p'], errors='coerce')
-                for c in PAX_COLS + ['CargaMax']: 
-                    df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0)
+                for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0)
                 
                 if len(fecha_sel_pax) > 1:
-                    agg_dict = {c: 'mean' for c in PAX_COLS}
-                    agg_dict['CargaMax'] = 'mean'
+                    agg_dict = {c: 'mean' for c in PAX_COLS}; agg_dict['CargaMax'] = 'mean'
                     df_dia_pax = df_dia_pax.groupby(['Via', 't_ini_p']).agg(agg_dict).reset_index()
-                    for c in PAX_COLS + ['CargaMax']: 
-                        df_dia_pax[c] = df_dia_pax[c].round().astype(int)
+                    for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = df_dia_pax[c].round().astype(int)
                     df_dia_pax['Fecha'] = f"Promedio ({len(fecha_sel_pax)} días)"
                     df_dia_pax['N° THDR Pax'] = 'Promedio Varios Días'
                     df_dia_pax['Servicio'] = '—'
                 else:
-                    df_dia_pax.rename(columns={'Fecha_s': 'Fecha', 'Nro_THDR': 'N° THDR Pax', 'Tren': 'Servicio'}, inplace=True)
-                    for c in PAX_COLS + ['CargaMax']: 
-                        df_dia_pax[c] = df_dia_pax[c].astype(int)
+                    df_dia_pax.rename(columns={'Fecha_s':'Fecha', 'Nro_THDR':'N° THDR Pax', 'Tren':'Servicio'}, inplace=True)
+                    for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = df_dia_pax[c].astype(int)
 
                 df_dia_pax = df_dia_pax.sort_values(by=['Via', 't_ini_p'])
                 df_dia_pax['Hora Origen'] = df_dia_pax['t_ini_p'].apply(mins_to_time_str)
                 df_dia_pax.rename(columns={'CargaMax': 'Total a Bordo'}, inplace=True)
                 
-                t_v1 = df_dia_pax[df_dia_pax['Via']==1]['Total a Bordo'].sum()
-                t_v2 = df_dia_pax[df_dia_pax['Via']==2]['Total a Bordo'].sum()
-                
+                t_v1, t_v2 = df_dia_pax[df_dia_pax['Via']==1]['Total a Bordo'].sum(), df_dia_pax[df_dia_pax['Via']==2]['Total a Bordo'].sum()
                 st.markdown(f"### 📊 Resumen de Pasajeros {'(PROMEDIO)' if len(fecha_sel_pax) > 1 else ''}")
                 cc1, cc2, cc3 = st.columns(3)
-                cc1.metric("Total Pasajeros V1", f"{int(t_v1):,}")
-                cc2.metric("Total Pasajeros V2", f"{int(t_v2):,}")
-                cc3.metric("Total Ambas Vías", f"{int(t_v1+t_v2):,}")
+                cc1.metric("Total Pasajeros V1", f"{int(t_v1):,}"); cc2.metric("Total Pasajeros V2", f"{int(t_v2):,}"); cc3.metric("Total Ambas Vías", f"{int(t_v1+t_v2):,}")
                 
                 cols_v = ['Fecha', 'N° THDR Pax', 'Servicio', 'Hora Origen', 'Total a Bordo']
                 df_v1 = df_dia_pax[df_dia_pax['Via']==1][cols_v + PAX_COLS]
                 df_v2 = df_dia_pax[df_dia_pax['Via']==2][cols_v + list(reversed(PAX_COLS))]
                 
-                if not df_v1.empty: 
-                    st.subheader("🔵 V1 (PU → LI)")
-                    st.dataframe(df_v1, use_container_width=True)
-                if not df_v2.empty: 
-                    st.subheader("🔴 V2 (LI → PU)")
-                    st.dataframe(df_v2, use_container_width=True)
+                if not df_v1.empty: st.subheader("🔵 V1 (PU → LI)"); st.dataframe(df_v1, use_container_width=True)
+                if not df_v2.empty: st.subheader("🔴 V2 (LI → PU)"); st.dataframe(df_v2, use_container_width=True)
                 if not df_v1.empty or not df_v2.empty:
                     out_name = f"Pax_Promedio_{len(fecha_sel_pax)}dias.csv" if len(fecha_sel_pax) > 1 else f"Pax_{fecha_sel_pax[0]}.csv"
                     st.download_button("📥 Descargar CSV", pd.concat([df_v1, df_v2]).to_csv(index=False).encode('utf-8'), out_name, 'text/csv')
 
     with tab_vacios:
-        if df_all.empty: 
-            st.warning("⚠️ Requiere carga de THDR.")
+        if df_all.empty: st.warning("⚠️ Requiere carga de THDR.")
         else:
             fecha_sel_vacios = st.selectbox("📅 Filtrar Fecha Operativa", fechas, key="fs_vacios")
             vacios_list = get_vacios_dia(df_all[df_all['Fecha_str'] == fecha_sel_vacios].copy())
-            
             for idx, row in df_all[(df_all['Fecha_str'] == fecha_sel_vacios) & (df_all['maniobra'].notnull())].iterrows():
                 man, t_ini = row['maniobra'], row['t_ini']
-                if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: 
-                    vacios_list.append({'t_asigned': t_ini + 40.0 if row['Via'] == 1 else t_ini + 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-                elif man == 'ACOPLE_BTO': 
-                    vacios_list.append({'t_asigned': (t_ini + 40.0 if row['Via'] == 1 else t_ini + 20.0) - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-                elif man == 'CORTE_SA': 
-                    vacios_list.append({'t_asigned': t_ini + 47.0 if row['Via'] == 1 else t_ini + 13.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
-                elif man == 'ACOPLE_SA': 
-                    vacios_list.append({'t_asigned': (t_ini + 47.0 if row['Via'] == 1 else t_ini + 13.0) - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+                t_arr_bto = t_ini + 40.0 if row['Via'] == 1 else t_ini + 20.0
+                t_arr_sa = t_ini + 47.0 if row['Via'] == 1 else t_ini + 13.0
+                if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: vacios_list.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                elif man == 'ACOPLE_BTO': vacios_list.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
             
-            if not vacios_list: 
-                st.info("Sin maniobras en vacío.")
+            if not vacios_list: st.info("Sin maniobras en vacío.")
             else:
                 tabla_vacios = [{"Hora Estimada": mins_to_time_str(v['t_asigned']), "Tren (Motriz)": str(v.get('motriz_num', '')), "Origen": v.get('origen_txt', ''), "Destino": v.get('destino_txt', ''), "Tren-km": round(v.get('dist', 0) * (2 if v.get('doble') else 1), 2), "Configuración": v.get('tipo', 'XT-100')} for v in vacios_list]
                 df_vacios_out = pd.DataFrame(tabla_vacios).sort_values("Hora Estimada")
                 st.metric("Total Movimientos", len(df_vacios_out))
                 st.dataframe(df_vacios_out, use_container_width=True)
 
-if __name__ == "__main__": 
-    main()
+if __name__ == "__main__": main()
