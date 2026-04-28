@@ -902,17 +902,30 @@ def procesar_thdr(data, fname, via_param=1):
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
         fecha_str = extraer_fecha_segura(raw, fname)
+        
+        # --- MEJORA CRÍTICA: BÚSQUEDA DINÁMICA DE LA FILA DE ENCABEZADOS Y ESTACIONES ---
         header_idx = 1
         for i in range(min(15, len(raw))):
             row_vals = [str(x).upper() for x in raw.iloc[i].values if pd.notna(x)]
             row_str = ' '.join(row_vals)
-            if 'VIAJE' in row_str and ('TREN' in row_str or 'MOTRIZ' in row_str or 'SFE' in row_str or 'SERVICIO' in row_str) and ('SALIDA' in row_str or 'HORA' in row_str):
+            if 'VIAJE' in row_str and ('TREN' in row_str or 'MOTRIZ' in row_str or 'SFE' in row_str or 'SERVICIO' in row_str or 'SERV' in row_str) and ('SALIDA' in row_str or 'HORA' in row_str):
                 header_idx = i
                 break
                 
-        r0 = raw.iloc[header_idx - 1].copy() if header_idx > 0 else raw.iloc[0].copy()
+        # En vez de restar 1 ciegamente, buscaremos hacia arriba la fila que tenga nombres de estaciones.
+        best_est_row_idx = max(0, header_idx - 1)
+        max_est_matches = 0
+        for r_idx in range(0, header_idx + 1):
+            row_text = ' '.join(raw.iloc[r_idx].fillna('').astype(str).str.upper())
+            # Contar aciertos de estaciones clave del trazado MERVAL
+            matches = sum(1 for e in ['PUERTO', 'LIMACHE', 'BELLOTO', 'BARON', 'VIÑA', 'VINA', 'SALTO', 'QUILPUE'] if e in row_text)
+            if matches > max_est_matches:
+                max_est_matches = matches
+                best_est_row_idx = r_idx
+                
+        r0 = raw.iloc[best_est_row_idx].copy()
         
-        # MANTENIMIENTO CRITICO v117: Remplazo estricto de nulos interpretados como strings en archivos brutos
+        # Remplazo estricto de nulos interpretados como strings en archivos brutos
         r0 = r0.replace(['nan', 'NaN', 'None', '', ' ', '<NA>'], np.nan)
         r0.iloc[0] = np.nan 
         h1 = r0.ffill().fillna('').astype(str)
@@ -938,8 +951,9 @@ def procesar_thdr(data, fname, via_param=1):
                 try: df[f"{col}_min"] = df[col].apply(parse_time_to_mins)
                 except: pass
 
-        c_m1 = next((c for c in df.columns if 'motriz' in str(c).lower() and '1' in str(c).lower()), None)
-        c_m2 = next((c for c in df.columns if 'motriz' in str(c).lower() and '2' in str(c).lower()), None)
+        # MEJORA: Tolerar si la columna de trenes se llama solo "M1" o "M2" en lugar de "MOTRIZ 1"
+        c_m1 = next((c for c in df.columns if ('motriz' in str(c).lower() and '1' in str(c).lower()) or str(c).strip().upper() == 'M1'), None)
+        c_m2 = next((c for c in df.columns if ('motriz' in str(c).lower() and '2' in str(c).lower()) or str(c).strip().upper() == 'M2'), None)
         tren_col = next((c for c in df.columns if str(c).strip() == 'Tren'), None)
 
         def _get_fleet_info(r):
@@ -979,7 +993,7 @@ def procesar_thdr(data, fname, via_param=1):
             return pd.Series([motriz_str, tipo])
             
         if df.empty: return pd.DataFrame(), f"Sin filas para aplicar flota: {fname}"
-        # MANTENIMIENTO CRITICO v117: result_type='expand' para evitar problemas de dimensionalidad
+        
         df[['motriz_num', 'tipo_tren']] = df.apply(_get_fleet_info, axis=1, result_type='expand')
 
         if 'Unidad' in df.columns:
@@ -1070,6 +1084,7 @@ def procesar_thdr(data, fname, via_param=1):
 
         df['_id'] = df['Fecha_str'] + "_" + df['num_servicio'] + "_" + df['t_ini'].astype(str)
 
+        # Aquí ocurría el problema: Si las estaciones no se unían bien a las horas, todo quedaba como NaN y se borraba silenciosamente.
         df = df.dropna(subset=['t_ini'])
         df['t_fin'] = df['t_fin'].fillna(df['t_ini'] + df['km_viaje'] / 35.0 * 60.0)
         return df, "ok"
