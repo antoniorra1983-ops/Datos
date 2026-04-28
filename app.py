@@ -1173,12 +1173,9 @@ def match_pax(row, df_pax):
     EMPTY = ({c: 0 for c in PAX_COLS}, 0, '--:--:--', 'No Detectado', -1)
     if df_pax.empty: return EMPTY
     def _to_int(v):
-        try:
-            if pd.isna(v): return 0
-            return int(float(v))
+        try: return int(float(v)) if pd.notna(v) else 0
         except: return 0
-    t_i = row.get('t_ini')
-    via = row.get('via_op', row.get('Via', 1))
+    t_i, via = row.get('t_ini'), row.get('via_op', row.get('Via', 1))
     nro_viaje = clean_primary_key(row.get('nro_viaje', ''))
     thdr_date = row.get('Fecha_str')
     sub = df_pax[df_pax['Via'] == via].copy()
@@ -1199,14 +1196,12 @@ def match_pax(row, df_pax):
         match_exacto = sub[(sub['Nro_THDR_cmp'] == nro_viaje) & (sub['Nro_THDR_cmp'] != '')]
         if not match_exacto.empty:
             best = match_exacto.iloc[0]
-            pax_est_d = {c: _to_int(best.get(c, 0)) for c in PAX_COLS}
-            return pax_est_d, _to_int(best.get('CargaMax', 0)), mins_to_time_str(best.get('t_ini_p')), str(best.get('Nro_THDR', '')), best.name
+            return {c: _to_int(best.get(c, 0)) for c in PAX_COLS}, _to_int(best.get('CargaMax', 0)), mins_to_time_str(best.get('t_ini_p')), str(best.get('Nro_THDR', '')), best.name
 
     if pd.notna(t_i):
         best_match = sub.loc[sub['diff'].idxmin()]
         if best_match['diff'] <= 15: 
-            pax_est_d = {c: _to_int(best_match.get(c, 0)) for c in PAX_COLS}
-            return pax_est_d, _to_int(best_match.get('CargaMax', 0)), mins_to_time_str(best_match.get('t_ini_p')), str(best_match.get('Nro_THDR', '')), best_match.name
+            return {c: _to_int(best_match.get(c, 0)) for c in PAX_COLS}, _to_int(best_match.get('CargaMax', 0)), mins_to_time_str(best_match.get('t_ini_p')), str(best_match.get('Nro_THDR', '')), best_match.name
 
     return EMPTY
 
@@ -1220,15 +1215,11 @@ def parsear_planilla_maestra(data, fname):
             dfs["CSV"] = raw
         else:
             eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
-            # Lector Multi-Hoja inteligente
             dfs = pd.read_excel(BytesIO(data), header=None, engine=eng, dtype=str, sheet_name=None)
             
         viajes = []
-        
         for sheet_name, df in dfs.items():
             header_idx = -1
-            
-            # 1. Búsqueda inteligente de la fila de encabezados en la pestaña actual
             for i in range(min(20, len(df))):
                 row_str = ' '.join(df.iloc[i].fillna('').astype(str).str.upper())
                 if ('VIAJE' in row_str or 'N°' in row_str) and ('SERVICIO' in row_str or 'TREN' in row_str) and ('HORA' in row_str or 'PARTIDA' in row_str or 'SALIDA' in row_str):
@@ -1236,9 +1227,7 @@ def parsear_planilla_maestra(data, fname):
                     break
                     
             if header_idx != -1:
-                # Método Robusto Multi-Tabla (barrido horizontal)
                 headers = df.iloc[header_idx].fillna('').astype(str).str.upper()
-                
                 viaje_cols = [c for c, val in enumerate(headers) if 'VIAJE' in val or val == 'N°' or val == 'N']
                 srv_cols = [c for c, val in enumerate(headers) if 'SERV' in val or 'TREN' in val]
                 hora_cols = [c for c, val in enumerate(headers) if 'HORA' in val or 'PARTIDA' in val or 'SALIDA' in val]
@@ -1252,22 +1241,18 @@ def parsear_planilla_maestra(data, fname):
                         hc_cands = [hc for hc in hora_cols if hc > sc and hc - sc <= 3]
                         if hc_cands:
                             hc = hc_cands[0]
-                            # Limitar el escáner de unidad para que no se contagie a lo largo de la fila
                             cc_cands = [cc for cc in config_cols if cc > sc and cc - sc <= 6]
                             pairs.append((vc, sc, hc, cc_cands[0] if cc_cands else None))
 
                 for i in range(header_idx + 1, len(df)):
                     row = df.iloc[i]
-                    
                     for col_viaje, col_srv, col_hora, col_config in pairs:
                         if pd.isna(row.get(col_hora)) or pd.isna(row.get(col_srv)) or pd.isna(row.get(col_viaje)): continue
-
                         hora_str = str(row[col_hora]).strip()
                         srv_str = str(row[col_srv]).strip()
                         viaje_str = str(row[col_viaje]).strip()
                         config_str = str(row[col_config]).strip().upper() if col_config is not None and pd.notna(row.get(col_config)) else ''
 
-                        # Extracción robusta del número de viaje y servicio
                         m_viaje = re.search(r'(\d+)', viaje_str)
                         m_srv = re.search(r'(\d{3,4})', srv_str)
                         if not m_viaje or not m_srv: continue
@@ -1278,25 +1263,22 @@ def parsear_planilla_maestra(data, fname):
                         t_ini = parse_time_to_mins(hora_str)
                         if t_ini is None: continue
 
-                        # Asignación Segura Anti-Contagio
                         es_doble = False
                         if 'MÚLT' in config_str or 'MULT' in config_str or 'DOB' in config_str or '2' in config_str:
                             es_doble = True
 
-                        # Lógica estricta de Enrutamiento Operativo
                         via = 1 if viaje_num % 2 == 0 else 2
-                        
                         if via == 1:
                             km_orig = KM_ACUM[0] 
-                            if servicio_num >= 600: km_dest = KM_ACUM[20] # PU-LI
-                            elif 400 <= servicio_num < 600: km_dest = KM_ACUM[18] # PU-SA
-                            else: km_dest = KM_ACUM[14] # PU-EB
+                            if servicio_num >= 600: km_dest = KM_ACUM[20] 
+                            elif 400 <= servicio_num < 600: km_dest = KM_ACUM[18] 
+                            else: km_dest = KM_ACUM[14] 
                         else:
                             km_dest = KM_ACUM[0] 
-                            if servicio_num >= 600: km_orig = KM_ACUM[20] # LI-PU
-                            elif 400 <= servicio_num < 600: km_orig = KM_ACUM[18] # SA-PU
-                            elif 200 <= servicio_num < 400: km_orig = KM_ACUM[14] # EB-PU
-                            else: km_orig = KM_ACUM[14] # Default
+                            if servicio_num >= 600: km_orig = KM_ACUM[20] 
+                            elif 400 <= servicio_num < 600: km_orig = KM_ACUM[18] 
+                            elif 200 <= servicio_num < 400: km_orig = KM_ACUM[14] 
+                            else: km_orig = KM_ACUM[14] 
                             
                         ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                         nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
@@ -1308,24 +1290,20 @@ def parsear_planilla_maestra(data, fname):
                             'maniobra': None
                         })
             else:
-                # Fallback Seguro: Para CSV desestructurados
                 for i in range(len(df)):
                     row_vals = df.iloc[i].fillna('').astype(str).tolist()
-                    
                     for c_idx, val in enumerate(row_vals):
                         val = val.strip()
                         if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', val):
                             t_ini = parse_time_to_mins(val)
                             if t_ini is None: continue
                             
-                            servicio_num = None
-                            sc_idx = -1
+                            servicio_num, sc_idx = None, -1
                             for offset in range(1, 5):
                                 if c_idx - offset >= 0:
                                     check_val = row_vals[c_idx - offset].strip()
                                     if check_val.isdigit() and 200 <= int(check_val) <= 1999:
-                                        servicio_num = int(check_val)
-                                        sc_idx = c_idx - offset
+                                        servicio_num, sc_idx = int(check_val), c_idx - offset
                                         break
                             
                             viaje_num = None
@@ -1339,20 +1317,21 @@ def parsear_planilla_maestra(data, fname):
                                         
                             if servicio_num is None: continue
 
-                            # Búsqueda segura hacia la derecha para evitar contagio
+                            # Búsqueda estricta solo en las celdas adyacentes para anular contagios horizontales
                             es_doble = False
-                            if c_idx + 1 < len(row_vals):
-                                next_vals = ' '.join(row_vals[c_idx+1:c_idx+5]).upper()
-                                if 'MÚLT' in next_vals or 'MULT' in next_vals or 'DOB' in next_vals:
-                                    es_doble = True
+                            for offset_unidad in range(1, 3):
+                                if c_idx + offset_unidad < len(row_vals):
+                                    val_unidad = row_vals[c_idx + offset_unidad].strip().upper()
+                                    if 'MÚLT' in val_unidad or 'MULT' in val_unidad or 'DOB' in val_unidad or '2' in val_unidad:
+                                        es_doble = True
+                                        break
 
                             if viaje_num is None:
                                 sheet_upper = str(sheet_name).upper()
                                 if 'V1' in sheet_upper or 'VIA 1' in sheet_upper: via = 1
                                 elif 'V2' in sheet_upper or 'VIA 2' in sheet_upper: via = 2
                                 else: via = 1 if servicio_num % 2 == 0 else 2
-                            else:
-                                via = 1 if viaje_num % 2 == 0 else 2
+                            else: via = 1 if viaje_num % 2 == 0 else 2
                             
                             if via == 1:
                                 km_orig = KM_ACUM[0] 
@@ -1363,18 +1342,12 @@ def parsear_planilla_maestra(data, fname):
                                 km_dest = KM_ACUM[0] 
                                 if servicio_num >= 600: km_orig = KM_ACUM[20] 
                                 elif 400 <= servicio_num < 600: km_orig = KM_ACUM[18] 
-                                elif 200 <= servicio_num < 400: km_orig = KM_ACUM[14]
+                                elif 200 <= servicio_num < 400: km_orig = KM_ACUM[14] 
                                 else: km_orig = KM_ACUM[14] 
                                 
                             ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                             nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
-                            
-                            viajes.append({
-                                '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
-                                'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
-                                'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
-                                'maniobra': None
-                            })
+                            viajes.append({'_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via, 'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via, 'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta, 'maniobra': None})
                             
         df_viajes = pd.DataFrame(viajes)
         if not df_viajes.empty: df_viajes = df_viajes.drop_duplicates(subset=['_id'])
@@ -1399,22 +1372,18 @@ def leer_github(url):
 
 @st.cache_data(show_spinner="Procesando THDR Estándar…")
 def build_thdr_v71(blobs_v1, blobs_v2):
-    all_parts = []
-    err = []
+    all_parts, err = [], []
     for blobs, via_default in [(blobs_v1, 1), (blobs_v2, 2)]:
         for nm, data in blobs:
             df, msg = procesar_thdr(data, nm, via_default)
-            if not df.empty:
-                all_parts.append(df)
-            else:
-                err.append(f"[{nm}]: {msg}")
+            if not df.empty: all_parts.append(df)
+            else: err.append(f"[{nm}]: {msg}")
     
     if len(all_parts) > 0:
         df_master = pd.concat(all_parts, ignore_index=True)
         df1 = df_master[df_master['Via'] == 1].copy()
         df2 = df_master[df_master['Via'] == 2].copy()
-        if not df1.empty and not df2.empty:
-            df1, df2 = calcular_dwell(df1, df2)
+        if not df1.empty and not df2.empty: df1, df2 = calcular_dwell(df1, df2)
         return df1, df2, err
     return pd.DataFrame(), pd.DataFrame(), err
 
@@ -1423,16 +1392,12 @@ def build_pax_v71(blobs_v1, blobs_v2):
     parts, err = [], []
     for blobs, via_default in [(blobs_v1, 1), (blobs_v2, 2)]:
         for nm, data in blobs:
-            try: 
-                parts.append(cargar_pax(data, nm, via_default))
-            except Exception as e: 
-                err.append(f"[{nm}]: {e}")
-    if len(parts) > 0: 
-        return pd.concat(parts, ignore_index=True), err
+            try: parts.append(cargar_pax(data, nm, via_default))
+            except Exception as e: err.append(f"[{nm}]: {e}")
+    if len(parts) > 0: return pd.concat(parts, ignore_index=True), err
     return pd.DataFrame(), err
 
-def _all_blobs(f_uploader, gh_key): 
-    return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
+def _all_blobs(f_uploader, gh_key): return tuple(leer(f_uploader) + st.session_state.get(gh_key, []))
 
 # =============================================================================
 # 13. DIAGRAMA Y DASHBOARDS (RENDERING UI REUTILIZABLE)
@@ -1442,26 +1407,13 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
-    Y_V2 = 260
-    Y_V1 = Y_V2 - gap_vias
-    MARGIN = 90
-    Y_44KV = Y_V2 + 90
-    Y_SER  = Y_V2 + 40
-    y_min  = Y_V1 - MARGIN
-    y_max  = Y_V2 + 150
-    H      = max(320, y_max - y_min)
-    y_mid  = (Y_V1 + Y_V2) / 2
+    Y_V2, Y_V1 = 260, 260 - gap_vias
+    MARGIN, Y_44KV, Y_SER = 90, Y_V2 + 90, Y_V2 + 40
+    y_min, y_max = Y_V1 - MARGIN, Y_V2 + 150
+    H, y_mid = max(320, y_max - y_min), (Y_V1 + Y_V2) / 2
 
     fig = go.Figure()
-    fig.update_layout(
-        height=H, margin=dict(l=10, r=10, t=45, b=10),
-        xaxis=dict(range=[0, W], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True),
-        yaxis=dict(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True),
-        plot_bgcolor='white', paper_bgcolor='white',
-        font=dict(color='black'), showlegend=False, hovermode='closest',
-        title=dict(text=f"MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI", font=dict(size=12, color='black'), x=0.5),
-    )
-
+    fig.update_layout(height=H, margin=dict(l=10, r=10, t=45, b=10), xaxis=dict(range=[0, W], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True), yaxis=dict(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True), plot_bgcolor='white', paper_bgcolor='white', font=dict(color='black'), showlegend=False, hovermode='closest', title=dict(text=f"MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI", font=dict(size=12, color='black'), x=0.5))
     fig.add_shape(type='line', x0=0, x1=W, y0=Y_V2, y1=Y_V2, line=dict(color='#c62828', width=5))
     fig.add_shape(type='line', x0=0, x1=W, y0=Y_V1, y1=Y_V1, line=dict(color='#1565c0', width=5))
     fig.add_shape(type='line', x0=0, x1=W, y0=Y_44KV, y1=Y_44KV, line=dict(color='#FBC02D', width=3, dash='dash'))
@@ -1470,16 +1422,10 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
     for i, (ec, km) in enumerate(zip(EC, KM_ACUM[:N_EST])):
         xp = xkm(km)
         fig.add_shape(type='line', x0=xp, x1=xp, y0=Y_V1-20, y1=Y_V2+20, line=dict(color='#bbb', width=1, dash='dot'))
-        y_ec = y_mid + (12 if i % 2 == 0 else -12)
-        fig.add_annotation(x=xp, y=y_ec, text=ec, showarrow=False, font=dict(size=8, color='#555'), xanchor='center', yanchor='middle')
+        fig.add_annotation(x=xp, y=y_mid + (12 if i % 2 == 0 else -12), text=ec, showarrow=False, font=dict(size=8, color='#555'), xanchor='center', yanchor='middle')
 
     seat_x = xkm(SEAT_KM)
-    fig.add_trace(go.Scatter(
-        x=[seat_x], y=[Y_44KV + 30], mode='markers+text',
-        marker=dict(symbol='triangle-up', size=22, color='#FBC02D', line=dict(color='black', width=2)),
-        text=f"<b>⚡ SEAT EL SOL<br>{seat_accum_plot:,.0f} kWh</b>", textposition="top center",
-        textfont=dict(size=10, color='black'), showlegend=False, hoverinfo='skip'
-    ))
+    fig.add_trace(go.Scatter(x=[seat_x], y=[Y_44KV + 30], mode='markers+text', marker=dict(symbol='triangle-up', size=22, color='#FBC02D', line=dict(color='black', width=2)), text=f"<b>⚡ SEAT EL SOL<br>{seat_accum_plot:,.0f} kWh</b>", textposition="top center", textfont=dict(size=10, color='black'), showlegend=False, hoverinfo='skip'))
     fig.add_shape(type='line', x0=seat_x, x1=seat_x, y0=Y_44KV+30, y1=Y_44KV, line=dict(color='#FBC02D', width=4))
 
     for skm, nombre_ser in SER_DATA:
@@ -1488,13 +1434,11 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
         val = ser_accum_plot.get(nombre_ser, 0.0)
         
         if is_active:
-            color, fill, dash_st = '#FBC02D', '#FFF3E0', 'dot'
-            txt_color = '#E65100'
+            color, fill, dash_st, txt_color = '#FBC02D', '#FFF3E0', 'dot', '#E65100'
             fig.add_shape(type='line', x0=xp, x1=xp, y0=Y_SER-15, y1=Y_V1, line=dict(color='#E65100', width=2))
             lbl = f"<b>{nombre_ser}</b><br><span style='font-size:8px'>{val:,.0f} kWh</span>"
         else:
-            color, fill, dash_st = '#9E9E9E', '#F5F5F5', 'dash'
-            txt_color = '#757575'
+            color, fill, dash_st, txt_color = '#9E9E9E', '#F5F5F5', 'dash', '#757575'
             fig.add_annotation(x=xp, y=Y_SER-25, text="❌ FALLA", showarrow=False, font=dict(size=10, color='red'))
             lbl = f"<b>{nombre_ser}</b><br><span style='font-size:8px'>OFF</span>"
 
@@ -1513,53 +1457,35 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
         indices = list(sub_sorted.index)
         for i, idx in enumerate(indices):
             xp_i = xkm(sub_sorted.loc[idx, 'km_pos'])
-            close = False
-            if i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX: close = True
-            if i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX: close = True
+            close = (i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX) or (i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX)
             label_side[idx] = ('up' if i % 2 == 0 else 'down') if close else 'up'
 
     for idx, row in df_act_plot.iterrows():
-        via   = row['Via']
-        xp    = xkm(row['km_pos'])
-        y_ln  = Y_V2 if via == 2 else Y_V1
-        color = '#c62828' if via == 2 else '#1565c0'
+        via, xp, y_ln, color = row['Via'], xkm(row['km_pos']), Y_V2 if row['Via'] == 2 else Y_V1, '#c62828' if row['Via'] == 2 else '#1565c0'
         
         doble_tramo = row.get('doble', False)
         man = row.get('maniobra')
-        if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
-            doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
-        elif man == 'ACOPLE_BTO':
-            doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
-        elif man == 'CORTE_SA':
-            doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
-        elif man == 'ACOPLE_SA':
-            doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
+        if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
+        elif man == 'ACOPLE_BTO': doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
+        elif man == 'CORTE_SA': doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
+        elif man == 'ACOPLE_SA': doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
             
-        tip   = row.get('tooltip', '')
-        r_c   = 18 if doble_tramo else 11
-
-        serv = str(row.get('num_servicio', ''))
-        motriz = str(row.get('motriz_num', ''))
-        tipo = str(row.get('tipo_tren', 'XT-100'))
+        r_c = 18 if doble_tramo else 11
+        serv, motriz, tipo = str(row.get('num_servicio', '')), str(row.get('motriz_num', '')), str(row.get('tipo_tren', 'XT-100'))
         
-        if tipo == 'SFE': xt_lbl = f"SFE-{motriz}" if motriz else "SFE"
-        elif tipo == 'XT-M': xt_lbl = f"XTM-{motriz}" if motriz else "XTM"
-        else: xt_lbl = f"XT-{motriz}" if motriz else "XT"
+        # Mapeo Visual del nombre del tren según imagen
+        if tipo == 'SFE': xt_lbl = f"SFE [U-{motriz}]" if motriz else "SFE"
+        elif tipo == 'XT-M': xt_lbl = f"Modular [U-{motriz}]" if motriz else "Modular"
+        else: xt_lbl = f"X'Trapolis 100 [U-{motriz}]" if motriz else "X'Trapolis 100"
 
-        kwh_n = float(row.get('kwh_neto', 0))
-        pax_v = int(row.get('pax_inst', 0)) 
+        kwh_n, pax_v = float(row.get('kwh_neto', 0)), int(row.get('pax_inst', 0)) 
         sep_r = row.get('sep_next', '—')
         sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
 
         side = label_side.get(idx, 'up')
-        dy_mot = +(r_c + 18) if side == 'up' else -(r_c + 18)
-        dy_svc = -(r_c + 16) if side == 'up' else +(r_c + 16)
-        dy_sep = -(r_c + 32) if side == 'up' else +(r_c + 32)
+        dy_mot, dy_svc, dy_sep = +(r_c + 18) if side == 'up' else -(r_c + 18), -(r_c + 16) if side == 'up' else +(r_c + 16), -(r_c + 32) if side == 'up' else +(r_c + 32)
 
-        fig.add_trace(go.Scatter(x=[xp], y=[y_ln], mode='markers',
-            marker=dict(size=r_c*2, color=color, line=dict(color='black', width=2)),
-            hovertext=tip, hovertemplate='%{hovertext}<extra></extra>', showlegend=False))
-
+        fig.add_trace(go.Scatter(x=[xp], y=[y_ln], mode='markers', marker=dict(size=r_c*2, color=color, line=dict(color='black', width=2)), hovertext=row.get('tooltip', ''), hovertemplate='%{hovertext}<extra></extra>', showlegend=False))
         fig.add_annotation(x=xp, y=y_ln + dy_mot, text=f"<b>{xt_lbl}</b>", showarrow=False, font=dict(size=11, color='#111'), bgcolor='rgba(255,255,255,0.7)')
         fig.add_annotation(x=xp, y=y_ln + dy_svc, text=f"<b>Serv. {serv}</b>", showarrow=False, font=dict(size=10, color='#111'), bgcolor='rgba(255,255,255,0.7)')
         fig.add_annotation(x=xp - r_c - 18, y=y_ln, text=f"{kwh_n:.0f} kWh", showarrow=False, font=dict(size=9, color='#2E7D32'), xanchor='right')
@@ -1567,31 +1493,6 @@ def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_
         if sep_s: fig.add_annotation(x=xp, y=y_ln + dy_sep, text=f"<b>{sep_s}</b>", showarrow=False, font=dict(size=12, color='#111'))
 
     return fig
-
-def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
-    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
-    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
-    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
-    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
-    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
-    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
-    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
-    regen_bruta = t_regen + t_reostat
-    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
-    ide_global  = t_neto/tren_km_t if tren_km_t > 0 else 0.0
-    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
-    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
-
-    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
-    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
-    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
-    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
-    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
-    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
-    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
-    st.divider()
 
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0):
     if 'maniobra' not in df_dia.columns: df_dia['maniobra'] = None
@@ -1625,10 +1526,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if modo == "▶️ Animado":
         st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
 
-    st.markdown(
-        f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1}</span>"
-        f"<span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; ⚙️ {pct_trac}% Tracción</span>", unsafe_allow_html=True
-    )
+    st.markdown(f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1}</span><span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; ⚙️ {pct_trac}% Tracción</span>", unsafe_allow_html=True)
 
     df_act = df_dia_e[(df_dia_e['t_ini']<=hora_m1) & (df_dia_e['t_fin']>hora_m1)].copy()
     instant_ser_demands_kw = {s[1]: 0.0 for s in active_sers}
@@ -1659,10 +1557,12 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         df_act['sep_next'] = df_act.apply(lambda r: _sep_next(r, df_act[df_act['Via']==r['Via']].drop(index=r.name)), axis=1)
 
         def _make_tooltip_and_power(row):
-            m_num = str(row.get('motriz_num', ''))
-            tipo = str(row.get('tipo_tren', 'XT-100'))
-            serv = str(row.get('num_servicio', ''))
-            nombre_tren = f"{tipo}-{m_num}" if m_num else tipo
+            m_num, tipo, serv = str(row.get('motriz_num', '')), str(row.get('tipo_tren', 'XT-100')), str(row.get('num_servicio', ''))
+            
+            # Nombre estetico
+            if tipo == 'SFE': nombre_tren = f"SFE [U-{m_num}]" if m_num else "SFE"
+            elif tipo == 'XT-M': nombre_tren = f"Modular [U-{m_num}]" if m_num else "Modular"
+            else: nombre_tren = f"X'Trapolis 100 [U-{m_num}]" if m_num else "X'Trapolis 100"
             
             doble_tramo = row.get('doble', False)
             man = row.get('maniobra')
@@ -1725,13 +1625,13 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
         
         if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']:
-            vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
         elif man == 'ACOPLE_BTO':
-            vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
         elif man == 'CORTE_SA':
-            vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+            vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
         elif man == 'ACOPLE_SA':
-            vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+            vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
 
     vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
     vacio_count = len(vacios_hasta_ahora)
@@ -2152,6 +2052,7 @@ def main():
                 if 'df_plan' not in st.session_state:
                     st.session_state['df_plan'] = pd.DataFrame([{"Origen": "Puerto", "Destino": "Limache", "Flota": "XT-100", "Configuración": "Doble", "Cantidad": 40}])
                 df_plan_edit = st.data_editor(st.session_state['df_plan'], num_rows="dynamic", use_container_width=True)
+            
             elif modo_plan == "Planilla Maestra (Subir CSV/Excel)":
                 archivo_planilla = st.file_uploader("📂 Sube tu Planilla Maestra (.csv, .xlsx, .xls)", type=['csv', 'xlsx', 'xls'])
                 df_plan_edit = pd.DataFrame()
@@ -2159,12 +2060,27 @@ def main():
                     df_temp, msg = parsear_planilla_maestra(archivo_planilla.getvalue(), archivo_planilla.name)
                     if df_temp.empty: st.error(f"Error procesando: {msg}")
                     else:
-                        rutas_unicas = df_temp['svc_type'].unique()
-                        if 'flota_map' not in st.session_state or set(st.session_state['flota_map']['Ruta']) != set(rutas_unicas):
-                            st.session_state['flota_map'] = pd.DataFrame({"Ruta": rutas_unicas, "Flota Asignada": ["XT-100"] * len(rutas_unicas)})
-                        df_flota_edit = st.data_editor(st.session_state['flota_map'], hide_index=True, use_container_width=True)
+                        st.success("✅ Planilla decodificada. Distribuye la cantidad de flota por trayecto (Rolling Stock Rostering):")
+                        viajes_por_ruta = df_temp['svc_type'].value_counts().to_dict()
+                        rutas_unicas = list(viajes_por_ruta.keys())
+                        
+                        if 'flota_map_v2' not in st.session_state or set(st.session_state['flota_map_v2']['Ruta']) != set(rutas_unicas):
+                            st.session_state['flota_map_v2'] = pd.DataFrame([{"Ruta": r, "Total Viajes": viajes_por_ruta[r], "XT-100": viajes_por_ruta[r], "XT-M": 0, "SFE": 0} for r in rutas_unicas])
+                        
+                        st.caption("Ajusta las cantidades para cada tipo de tren. El sistema asignará el modelo cronológicamente.")
+                        df_flota_edit = st.data_editor(
+                            st.session_state['flota_map_v2'],
+                            column_config={"Ruta": st.column_config.TextColumn("Ruta", disabled=True), "Total Viajes": st.column_config.NumberColumn("Total Viajes", disabled=True), "XT-100": st.column_config.NumberColumn("Cant. XT-100", min_value=0, step=1), "XT-M": st.column_config.NumberColumn("Cant. XT-M", min_value=0, step=1), "SFE": st.column_config.NumberColumn("Cant. SFE", min_value=0, step=1)},
+                            hide_index=True, use_container_width=True
+                        )
+                        
+                        df_flota_edit['Asignados'] = df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE']
+                        if not df_flota_edit[df_flota_edit['Asignados'] != df_flota_edit['Total Viajes']].empty:
+                            st.warning("⚠️ Hay trayectos donde la suma de trenes asignados no coincide con el total. El remanente se despachará como XT-100.")
+                            
                         st.session_state['temp_df_plan'] = df_temp
                         st.session_state['temp_flota_edit'] = df_flota_edit
+            
             elif modo_plan == "Laboratorio (Tramo Único)":
                 tipo_mov_lab = st.radio("Modo de Operación", ["Servicio Comercial (Con Paradas)", "Maniobra en Vacío (Pasa de largo a 30 km/h en andenes)"], horizontal=True)
                 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -2209,8 +2125,18 @@ def main():
                 else:
                     if 'temp_df_plan' not in st.session_state: st.stop()
                     df_sint = st.session_state['temp_df_plan'].copy()
-                    flota_dict = dict(zip(st.session_state['temp_flota_edit']['Ruta'], st.session_state['temp_flota_edit']['Flota Asignada']))
-                    df_sint['tipo_tren'] = df_sint['svc_type'].apply(lambda x: flota_dict.get(x, 'XT-100'))
+                    df_flota_edit = st.session_state['temp_flota_edit']
+                    df_sint = df_sint.sort_values('t_ini')
+                    
+                    asignaciones = {}
+                    for _, r in df_flota_edit.iterrows():
+                        asignaciones[r['Ruta']] = ['XT-100']*int(r.get('XT-100', 0)) + ['XT-M']*int(r.get('XT-M', 0)) + ['SFE']*int(r.get('SFE', 0))
+                        
+                    def asignar_tren(ruta):
+                        if ruta in asignaciones and len(asignaciones[ruta]) > 0: return asignaciones[ruta].pop(0)
+                        return 'XT-100'
+                    df_sint['tipo_tren'] = df_sint['svc_type'].apply(asignar_tren)
+
                 if df_sint.empty: st.stop()
                 st.session_state['raw_plan_df'] = df_sint
                 st.session_state['simulacion_plan_lista'] = True
@@ -2258,19 +2184,32 @@ def main():
     with tab_datos:
         if df_px.empty: st.warning("⚠️ Sin datos de pasajeros.")
         else:
-            fecha_sel_pax = st.selectbox("📅 Filtrar por Fecha", ["Todas las fechas"] + sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]]))
-            df_dia_pax = df_px.copy() if fecha_sel_pax == "Todas las fechas" else df_px[df_px['Fecha_s'] == fecha_sel_pax].copy()
-            if df_dia_pax.empty: st.info("No hay registros.")
+            fechas_disponibles = sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]])
+            fecha_sel_pax = st.multiselect("📅 Selecciona Fechas a evaluar (Si eliges varias, se promediarán)", fechas_disponibles, default=[fechas_disponibles[0]] if fechas_disponibles else None)
+            
+            if not fecha_sel_pax: st.info("Selecciona al menos una fecha.")
             else:
+                df_dia_pax = df_px[df_px['Fecha_s'].isin(fecha_sel_pax)].copy()
+                df_dia_pax['t_ini_p'] = pd.to_numeric(df_dia_pax['t_ini_p'], errors='coerce')
+                for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0)
+                
+                if len(fecha_sel_pax) > 1:
+                    agg_dict = {c: 'mean' for c in PAX_COLS}; agg_dict['CargaMax'] = 'mean'
+                    df_dia_pax = df_dia_pax.groupby(['Via', 't_ini_p']).agg(agg_dict).reset_index()
+                    for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = df_dia_pax[c].round().astype(int)
+                    df_dia_pax['Fecha'] = f"Promedio ({len(fecha_sel_pax)} días)"
+                    df_dia_pax['N° THDR Pax'] = 'Promedio Varios Días'
+                    df_dia_pax['Servicio'] = '—'
+                else:
+                    df_dia_pax.rename(columns={'Fecha_s':'Fecha', 'Nro_THDR':'N° THDR Pax', 'Tren':'Servicio'}, inplace=True)
+                    for c in PAX_COLS + ['CargaMax']: df_dia_pax[c] = df_dia_pax[c].astype(int)
+
                 df_dia_pax = df_dia_pax.sort_values(by=['Via', 't_ini_p'])
-                for c in ['Nro_THDR', 'Tren', 'CargaMax']:
-                    if c not in df_dia_pax.columns: df_dia_pax[c] = ''
                 df_dia_pax['Hora Origen'] = df_dia_pax['t_ini_p'].apply(mins_to_time_str)
-                df_dia_pax.rename(columns={'Fecha_s':'Fecha', 'Nro_THDR':'N° THDR Pax', 'Tren':'Servicio', 'CargaMax':'Total a Bordo'}, inplace=True)
-                for c in PAX_COLS: df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0).astype(int) if c in df_dia_pax.columns else 0
+                df_dia_pax.rename(columns={'CargaMax': 'Total a Bordo'}, inplace=True)
                 
                 t_v1, t_v2 = df_dia_pax[df_dia_pax['Via']==1]['Total a Bordo'].sum(), df_dia_pax[df_dia_pax['Via']==2]['Total a Bordo'].sum()
-                st.markdown("### 📊 Resumen de Pasajeros")
+                st.markdown(f"### 📊 Resumen de Pasajeros {'(PROMEDIO)' if len(fecha_sel_pax) > 1 else ''}")
                 cc1, cc2, cc3 = st.columns(3)
                 cc1.metric("Total Pasajeros V1", f"{int(t_v1):,}"); cc2.metric("Total Pasajeros V2", f"{int(t_v2):,}"); cc3.metric("Total Ambas Vías", f"{int(t_v1+t_v2):,}")
                 
@@ -2281,7 +2220,8 @@ def main():
                 if not df_v1.empty: st.subheader("🔵 V1 (PU → LI)"); st.dataframe(df_v1, use_container_width=True)
                 if not df_v2.empty: st.subheader("🔴 V2 (LI → PU)"); st.dataframe(df_v2, use_container_width=True)
                 if not df_v1.empty or not df_v2.empty:
-                    st.download_button("📥 Descargar CSV", pd.concat([df_v1, df_v2]).to_csv(index=False).encode('utf-8'), f'Pax_{fecha_sel_pax}.csv', 'text/csv')
+                    out_name = f"Pax_Promedio_{len(fecha_sel_pax)}dias.csv" if len(fecha_sel_pax) > 1 else f"Pax_{fecha_sel_pax[0]}.csv"
+                    st.download_button("📥 Descargar CSV", pd.concat([df_v1, df_v2]).to_csv(index=False).encode('utf-8'), out_name, 'text/csv')
 
     with tab_vacios:
         if df_all.empty: st.warning("⚠️ Requiere carga de THDR.")
