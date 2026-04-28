@@ -1082,7 +1082,28 @@ def procesar_thdr(data, fname, via_param=1):
             df['nro_viaje'] = df[col_name_v].apply(clean_primary_key)
         else: df['nro_viaje'] = ''
 
-        df['_id'] = df['Fecha_str'] + "_" + df['num_servicio'] + "_" + df['t_ini'].astype(str)
+       # --- Detectar y asignar num_servicio si no existe en las columnas ---
+        if 'num_servicio' not in df.columns:
+            srv_cand = next(
+                (c for c in df.columns
+                 if any(k in str(c).lower() for k in ['servicio', 'serv', 'n°', 'nro', 'numero'])
+                 and '_min' not in str(c).lower()
+                 and 'hora' not in str(c).lower()),
+                None
+            )
+            if srv_cand:
+                df['num_servicio'] = df[srv_cand].apply(
+                    lambda x: re.sub(r'[^\d]', '', str(x)) if pd.notna(x) else ''
+                )
+            else:
+                # Fallback: reutilizar nro_viaje (número de viaje ya detectado)
+                df['num_servicio'] = df.get('nro_viaje', pd.Series([''] * len(df), dtype=str))
+
+        df['_id'] = (
+            df['Fecha_str'].astype(str) + "_" +
+            df['num_servicio'].astype(str) + "_" +
+            df['t_ini'].astype(str)
+        )
 
         # Aquí ocurría el problema: Si las estaciones no se unían bien a las horas, todo quedaba como NaN y se borraba silenciosamente.
         df = df.dropna(subset=['t_ini'])
