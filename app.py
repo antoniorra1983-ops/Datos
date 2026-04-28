@@ -2437,12 +2437,21 @@ def main():
                             trc_sb, aux_sb, reg_sb, _, neto_sb, th_sb = simular_tramo_termodinamico(
                                 sb_flota, False, km_o, km_d, via_sb, pct_trac, use_rm, use_pend, nodos_sb, {}, sb_pax, None, None, estacion_anio_plan, 480.0, es_vacio_flag
                             )
+                            
+                        # Escalado de Energía Pantógrafo a SEAT
+                        distrib_sb = distribuir_energia_sers(neto_sb, th_sb, km_o, km_d, active_sers)
+                        tot_ser_sb = sum(max(0.0, v) for v in distrib_sb.values()) / ETA_SER_RECTIFICADOR
+                        avg_dem_sb = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / max(0.001, th_sb) for k, v in distrib_sb.items()}
+                        flujo_sb = calcular_flujo_ac_nodo(avg_dem_sb)
+                        loss_sb = flujo_sb['P_loss_kw'] * (1.15**2) * max(0.001, th_sb)
+                        seat_sb = (tot_ser_sb + loss_sb) / 0.99
+                        ide_sb = seat_sb / max(0.001, abs(km_d - km_o))
+
                         st.success(f"Simulación exitosa: {sb_orig} ➔ {sb_dest} | Distancia: {abs(km_d - km_o):.2f} km")
-                        c_sb1, c_sb2, c_sb3, c_sb4 = st.columns(4)
+                        c_sb1, c_sb2, c_sb3 = st.columns(3)
                         c_sb1.metric("⏱️ Tiempo de Viaje", f"{th_sb * 60:.1f} min")
-                        c_sb2.metric("⚡ Energía Tracción", f"{trc_sb:.1f} kWh")
-                        c_sb3.metric("♻️ Energía Regenerada", f"{reg_sb:.1f} kWh")
-                        c_sb4.metric("💡 IDE del Tramo", f"{neto_sb / abs(km_d - km_o):.3f} kWh/km")
+                        c_sb2.metric("⚡ Energía Neta (SEAT)", f"{seat_sb:.1f} kWh")
+                        c_sb3.metric("💡 IDE del Tramo (SEAT)", f"{ide_sb:.3f} kWh/km")
         
         if modo_plan in ["Matriz Sintética", "Planilla Maestra (Subir CSV/Excel)"]:
             if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
@@ -2519,16 +2528,33 @@ def main():
                 with col_m3: dias_domingos = st.number_input("Domingos/Festivos", min_value=0, max_value=10, value=4)
                 
                 total_dias_mes = dias_laborales + dias_sabados + dias_domingos
-                kwh_neto_dia = df_sint_e['kwh_viaje_neto'].sum()
-                kwh_neto_mes = kwh_neto_dia * total_dias_mes
+                
+                # Escalado a Facturación SEAT para todo el día planificado
+                ser_accum_plan = {name: 0.0 for _, name in active_sers}
+                for _, r in df_sint_e.iterrows():
+                    t_h = (r['t_fin'] - r['t_ini']) / 60.0
+                    dist = distribuir_energia_sers(r['kwh_viaje_neto'], t_h, r['km_orig'], r['km_dest'], active_sers)
+                    for s, v in dist.items(): ser_accum_plan[s] += v
+                
+                tot_44_plan = sum(max(0.0, v) for v in ser_accum_plan.values()) / ETA_SER_RECTIFICADOR
+                t_elap_plan = max(0.001, (df_sint_e['t_fin'].max() - df_sint_e['t_ini'].min()) / 60.0)
+                avg_dem_plan = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap_plan for k, v in ser_accum_plan.items()}
+                flujo_plan = calcular_flujo_ac_nodo(avg_dem_plan)
+                loss_plan = flujo_plan['P_loss_kw'] * (1.15**2) * t_elap_plan
+                
+                seat_dia = (tot_44_plan + loss_plan) / 0.99
+                ide_plan = seat_dia / max(1.0, df_sint_e['tren_km'].sum())
+                seat_mes = seat_dia * total_dias_mes
+
                 pax_dia = pax_tot
                 pax_mes = pax_dia * total_dias_mes
                 
                 st.info(f"**Proyección para {total_dias_mes} días (Asumiendo que la malla '{tipo_dia_plan}' se repite diariamente):**")
-                cm1, cm2, cm3 = st.columns(3)
-                cm1.metric("⚡ Consumo Mensual Proyectado (Neto)", f"{kwh_neto_mes:,.0f} kWh")
-                cm2.metric("🧑‍🤝‍🧑 Pasajeros Mensuales Proyectados", f"{pax_mes:,} pax")
-                cm3.metric("💰 Costo Energía Estimado (100 CLP/kWh)", f"${kwh_neto_mes * 100:,.0f} CLP")
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                cm1.metric("⚡ Energía Facturable Mensual (SEAT)", f"{seat_mes:,.0f} kWh")
+                cm2.metric("💡 IDE Promedio Mensual (SEAT)", f"{ide_plan:.3f} kWh/km")
+                cm3.metric("🧑‍🤝‍🧑 Pasajeros Mensuales", f"{pax_mes:,} pax")
+                cm4.metric("💰 Costo Energía Estimado (100 CLP/kWh)", f"${seat_mes * 100:,.0f} CLP")
 
     with tab_mapa:
         if df_all.empty:
