@@ -495,7 +495,7 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
 # =============================================================================
 # 7. FÍSICA TERMODINÁMICA Y LOAD FLOW 
 # =============================================================================
-def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0):
+def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
     trc, aux, reg = 0.0, 0.0, 0.0
     t_horas = 0.0
@@ -544,6 +544,20 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             
             v_cons_kmh = max(5.0, vel_at_km(km_actual, via_op, use_rm))
             if v_consigna_override is not None: v_cons_kmh = min(v_cons_kmh, v_consigna_override)
+            
+            if es_vacio:
+                min_dist_est_m = min([abs(km_actual - k) for k in KM_ACUM]) * 1000.0
+                v_30_ms = 30.0 / 3.6
+                d_brake_to_30 = ((v_ms**2 - v_30_ms**2) / (2 * (f['a_freno_ms2'] * 0.85))) if v_ms > v_30_ms else 0.0
+                dist_to_next_station_m = 9999000.0
+                for est_k in KM_ACUM:
+                    if via_op == 1 and est_k > km_actual + 0.01:
+                        dist_to_next_station_m = min(dist_to_next_station_m, (est_k - km_actual)*1000.0)
+                    elif via_op == 2 and est_k < km_actual - 0.01:
+                        dist_to_next_station_m = min(dist_to_next_station_m, (km_actual - est_k)*1000.0)
+                
+                if dist_to_next_station_m <= d_brake_to_30 + 50.0 or min_dist_est_m <= 120.0:
+                    v_cons_kmh = min(v_cons_kmh, 30.0)
                 
             v_kmh = v_ms * 3.6
             if n_uni == 2: f_davis = (f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))
@@ -2387,11 +2401,19 @@ def main():
             elif modo_plan == "Laboratorio (Tramo Único)":
                 st.markdown("### 🔬 Laboratorio de Tramo Único (Sandbox)")
                 st.caption("Aísla el motor termodinámico para evaluar escenarios específicos (Modo Degradado o de Contingencia).")
+                
+                tipo_mov_lab = st.radio("Modo de Operación", ["Servicio Comercial (Con Paradas)", "Maniobra en Vacío (Pasa de largo a 30 km/h en andenes)"], horizontal=True)
+                
                 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
                 with col_s1: sb_orig = st.selectbox("Estación Origen", ESTACIONES, key="sb_o")
                 with col_s2: sb_dest = st.selectbox("Estación Destino", ESTACIONES, index=len(ESTACIONES)-1, key="sb_d")
                 with col_s3: sb_flota = st.selectbox("Tipo de Tren", ["XT-100", "XT-M", "SFE"], key="sb_f")
-                with col_s4: sb_pax = st.number_input("Pasajeros a bordo", 0, 1000, 150)
+                with col_s4: 
+                    if "Vacío" in tipo_mov_lab:
+                        sb_pax = 0
+                        st.info("Tren sin pasajeros")
+                    else:
+                        sb_pax = st.number_input("Pasajeros a bordo", 0, 1000, 150)
                 
                 if st.button("⚡ Simular Tramo", use_container_width=True):
                     if sb_orig == sb_dest:
@@ -2402,12 +2424,18 @@ def main():
                         via_sb = 1 if idx_o < idx_d else 2
                         km_o = KM_ACUM[idx_o]
                         km_d = KM_ACUM[idx_d]
+                        
                         est_idxs_sb = range(idx_o, idx_d + 1) if via_sb == 1 else range(idx_o, idx_d - 1, -1)
-                        nodos_sb = [(0.0, KM_ACUM[i]) for i in est_idxs_sb]
+                        
+                        es_vacio_flag = "Vacío" in tipo_mov_lab
+                        if es_vacio_flag:
+                            nodos_sb = [(0.0, KM_ACUM[idx_o]), (0.0, KM_ACUM[idx_d])]
+                        else:
+                            nodos_sb = [(0.0, KM_ACUM[i]) for i in est_idxs_sb]
                         
                         with st.spinner("Calculando termodinámica diferencial..."):
                             trc_sb, aux_sb, reg_sb, _, neto_sb, th_sb = simular_tramo_termodinamico(
-                                sb_flota, False, km_o, km_d, via_sb, pct_trac, use_rm, use_pend, nodos_sb, {}, sb_pax, None, None, estacion_anio_plan, 480.0
+                                sb_flota, False, km_o, km_d, via_sb, pct_trac, use_rm, use_pend, nodos_sb, {}, sb_pax, None, None, estacion_anio_plan, 480.0, es_vacio_flag
                             )
                         st.success(f"Simulación exitosa: {sb_orig} ➔ {sb_dest} | Distancia: {abs(km_d - km_o):.2f} km")
                         c_sb1, c_sb2, c_sb3, c_sb4 = st.columns(4)
