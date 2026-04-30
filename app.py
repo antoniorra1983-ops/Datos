@@ -57,6 +57,20 @@ def build_pax_v71(blobs_v1, blobs_v2):
     return pd.DataFrame(), err
 
 def main():
+    # =========================================================================
+    # CALLBACK DE INVALIDACIÓN DE ESTADO (STATE DESYNC FIX)
+    # Destruye la caché del planificador si se alteran parámetros físicos
+    # =========================================================================
+    def reset_plan_state():
+        keys_to_clear = [
+            'plan_1_ready', 'plan_1_sint_final', 'plan_1_sint_e',
+            'plan_2_ready', 'plan_2_sint_final', 'plan_2_sint_e',
+            'simulacion_plan_lista', 'raw_plan_df'
+        ]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+
     with st.sidebar:
         st.header("📂 Archivos Base")
         with st.expander("🔗 Cargar desde GitHub (Batch)", expanded=False):
@@ -108,26 +122,27 @@ def main():
         f_px2 = st.file_uploader("Pax Vía 2 (Limache→Puerto)", accept_multiple_files=True, key="px2")
         st.divider()
         st.subheader("✂️ Gestión de Flota (Split & Merge)")
-        n_cortes_v1       = st.slider("Doble→Simple en El Belloto (V1, PU-LI)",0,20,0)
-        n_cortes_pu_sa_v1 = st.slider("Doble→Simple en El Belloto (V1, PU-SA)",0,20,0)
-        n_acoples_v2      = st.slider("Simple→Doble en El Belloto (V2)",0,20,0)
-        n_cortes_sa_v1    = st.slider("Doble→Simple en S. Aldea (V1)",0,20,0)
-        n_acoples_sa_v2   = st.slider("Simple→Doble en S. Aldea (V2)",0,20,0)
+        n_cortes_v1       = st.slider("Doble→Simple en El Belloto (V1, PU-LI)",0,20,0, on_change=reset_plan_state)
+        n_cortes_pu_sa_v1 = st.slider("Doble→Simple en El Belloto (V1, PU-SA)",0,20,0, on_change=reset_plan_state)
+        n_acoples_v2      = st.slider("Simple→Doble en El Belloto (V2)",0,20,0, on_change=reset_plan_state)
+        n_cortes_sa_v1    = st.slider("Doble→Simple en S. Aldea (V1)",0,20,0, on_change=reset_plan_state)
+        n_acoples_sa_v2   = st.slider("Simple→Doble en S. Aldea (V2)",0,20,0, on_change=reset_plan_state)
         st.divider()
         st.subheader("⚙️ Parámetros de Simulación")
-        use_rm      = st.checkbox("🚦 Velocidades RM", value=False)
-        pct_trac    = st.slider("⚙️ % Tracción Nominal",30,100,90,5)
-        use_pend    = st.toggle("⛰️ Pendientes Físicas", value=True)
-        use_regen   = st.toggle("⚡ Activar Regeneración", value=True)
-        tipo_regen  = st.radio("Modelo de Regeneración", ["Físico (Load Flow / Squeeze Control)", "Probabilístico (Headway Real THDR)"])
+        # Inyectamos el Callback en todos los parámetros físicos
+        use_rm      = st.checkbox("🚦 Velocidades RM", value=False, on_change=reset_plan_state)
+        pct_trac    = st.slider("⚙️ % Tracción Nominal",30,100,90,5, on_change=reset_plan_state)
+        use_pend    = st.toggle("⛰️ Pendientes Físicas", value=True, on_change=reset_plan_state)
+        use_regen   = st.toggle("⚡ Activar Regeneración", value=True, on_change=reset_plan_state)
+        tipo_regen  = st.radio("Modelo de Regeneración", ["Físico (Load Flow / Squeeze Control)", "Probabilístico (Headway Real THDR)"], on_change=reset_plan_state)
         st.divider()
         st.subheader("🌡️ Perfil de Auxiliares Dinámicos")
-        mes_sel = st.selectbox("Mes de operación", ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"], index=3)
+        mes_sel = st.selectbox("Mes de operación", ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"], index=3, on_change=reset_plan_state)
         estacion_anio = MES_A_ESTACION[mes_sel]
         st.divider()
         st.subheader("🔌 Contingencias Eléctricas")
         all_ser_names = [s[1] for s in SER_DATA]
-        active_ser_names = st.multiselect("SERs Activas", all_ser_names, default=all_ser_names)
+        active_ser_names = st.multiselect("SERs Activas", all_ser_names, default=all_ser_names, on_change=reset_plan_state)
         active_sers = [s for s in SER_DATA if s[1] in active_ser_names]
         if not active_sers: active_sers = [SER_DATA[0]]
         st.divider()
@@ -239,9 +254,9 @@ def main():
         
         col_p1, col_p2 = st.columns([1, 2])
         with col_p1:
-            tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan")
+            tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan", on_change=reset_plan_state)
             pax_promedio_viaje = {"Laboral": 280, "Sábado": 160, "Domingo/Festivo": 110}[tipo_dia_plan]
-            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan")
+            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan", on_change=reset_plan_state)
             
             if perfiles_pax:
                 st.success("✅ Perfiles de pasajeros cargados. El Gemelo variará la masa del tren en cada estación.")
@@ -249,7 +264,7 @@ def main():
                 st.warning(f"⚠️ Sin datos de pasajeros cargados. Se usará perfil estático: {pax_promedio_viaje} pax")
             
         with col_p2:
-            modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética"], horizontal=True)
+            modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética"], horizontal=True, on_change=reset_plan_state)
             archivo_planilla = None
             
             if modo_plan == "Matriz Sintética":
@@ -265,7 +280,7 @@ def main():
                 if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
             
         # =====================================================================
-        # SOLUCIÓN: Desacoplar el Cálculo (Botón) del Renderizado (Estado)
+        # EJECUCIÓN DESACOPLADA (Botón guarda en memoria RAM el cálculo)
         # =====================================================================
         if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_empty"):
             with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
@@ -372,9 +387,9 @@ def main():
             
             col_p1, col_p2 = st.columns([1, 2])
             with col_p1:
-                tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan")
+                tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan", on_change=reset_plan_state)
                 pax_promedio_viaje = {"Laboral": 280, "Sábado": 160, "Domingo/Festivo": 110}[tipo_dia_plan]
-                estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan")
+                estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan", on_change=reset_plan_state)
                 
                 if perfiles_pax:
                     st.success("✅ Perfiles de pasajeros cargados.")
@@ -382,7 +397,7 @@ def main():
                     st.warning(f"⚠️ Sin datos de pasajeros cargados.")
                 
             with col_p2:
-                modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética"], horizontal=True)
+                modo_plan = st.radio("Fuente de Datos", ["Planilla Maestra (Subir CSV/Excel)", "Matriz Sintética"], horizontal=True, on_change=reset_plan_state)
                 archivo_planilla = None
                 
                 if modo_plan == "Matriz Sintética":
@@ -398,7 +413,7 @@ def main():
                     if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
                 
             # =================================================================
-            # SOLUCIÓN: Desacoplar el Cálculo (Botón) del Renderizado (Estado)
+            # EJECUCIÓN DESACOPLADA (Botón guarda en memoria RAM el cálculo)
             # =================================================================
             if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_full"):
                 with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
