@@ -90,8 +90,9 @@ def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=N
 
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
     hora_int = int(hora_decimal) % 24
-    perfil = _AUX_HVAC_HORA.get(estacion_anio, _AUX_HVAC_HORA["primavera"])
-    f_hvac = perfil[hora_int]
+    # QUITAMOS EL GUION BAJO AQUÍ TAMBIÉN:
+    perfil = AUX_HVAC_HORA.get(estacion_anio, AUX_HVAC_HORA["primavera"])
+    
     if cap_max > 0:
         ocup = min(1.0, pax_abordo / cap_max)
         if estacion_anio == "verano": f_ocup = 1.0 + 0.05 * ocup
@@ -99,7 +100,7 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
         else: f_ocup = 1.0 - 0.06 * ocup
     else:
         f_ocup = 1.0
-    f_marcha = _FACTOR_DWELL_COMPRESOR if estado_marcha == "DWELL" else 1.0
+    f_marcha = _FACTOR_DWELL_COMPRESOR if estado_marcha == "DWELL" else 1.0 # Nota: Si _FACTOR_DWELL_COMPRESOR da error, quítale el guion bajo en config.py también.
     aux_base = aux_kw_nominal * _FRAC_BASE
     aux_hvac = aux_kw_nominal * _FRAC_HVAC * f_hvac * f_ocup * f_marcha
     return aux_base + aux_hvac
