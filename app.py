@@ -269,7 +269,7 @@ def main():
         with col_p1:
             tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan", on_change=reset_plan_state)
             pax_promedio_viaje = {"Laboral": 280, "Sábado": 160, "Domingo/Festivo": 110}[tipo_dia_plan]
-            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan", on_change=reset_plan_state)
+            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC) Planificador", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan_2", on_change=reset_plan_state)
             
             df_px_filtered = pd.DataFrame()
             nombre_perfil = f"Estático ({pax_promedio_viaje} pax)"
@@ -510,7 +510,7 @@ def main():
             st.divider()
             
             # GEMELO DIGITAL ESTÁTICO / ANIMADO
-            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()), df_vacios_real=pd.DataFrame())
 
     with tab_mapa:
         if df_all.empty:
@@ -532,7 +532,7 @@ def main():
             df_dia_px_total = df_px[df_px['Fecha_s'] == fecha_sel] if not df_px.empty and 'Fecha_s' in df_px.columns else pd.DataFrame()
             pax_dia_tot = int(pd.to_numeric(df_dia_px_total['CargaMax'], errors='coerce').fillna(0).sum()) if not df_dia_px_total.empty else 0
             
-            render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key="mapa", gap_vias=gap_vias, pax_dia_total=pax_dia_tot)
+            render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key="mapa", gap_vias=gap_vias, pax_dia_total=pax_dia_tot, df_vacios_real=df_vacios_real)
 
     with tab_datos:
         st.subheader("📋 Auditoría de Datos: Carga de Pasajeros (Fuente Pura y Transparente)")
