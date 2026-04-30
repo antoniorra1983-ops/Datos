@@ -1,4 +1,3 @@
-# etl_parser.py
 import pandas as pd
 import numpy as np
 import re
@@ -7,6 +6,14 @@ from io import BytesIO
 from datetime import datetime, date, timedelta
 import streamlit as st
 from config import *
+
+EST_NORM = sorted({re.sub(r'[^a-z0-9]','', e.lower().replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ñ','n')): i for i, e in enumerate(ESTACIONES)}.items(), key=lambda x: -len(x[0]))
+
+def clasificar_dia(d):
+    str_d = d.strftime('%Y-%m-%d')
+    if str_d in feriados_2026 or d.weekday() == 6: return 'Domingo/Festivo'
+    if d.weekday() == 5: return 'Sábado'
+    return 'Laboral'
 
 def mins_to_time_str(mins):
     if pd.isna(mins): return '--:--:--'
@@ -50,21 +57,21 @@ def parse_excel_date(val):
         elif len(v_str) in [5, 6]:
             s_pad = v_str.zfill(6)
             try:
-                d, m, y = int(s_pad[0:2]), int(s_pad[2:4]), int(s_pad[4:6])
-                if 1 <= d <= 31 and 1 <= m <= 12:
+                d, mon, y = int(s_pad[0:2]), int(s_pad[2:4]), int(s_pad[4:6])
+                if 1 <= d <= 31 and 1 <= mon <= 12:
                     y_full = 2000 + y if y < 100 else y
-                    return f"{y_full:04d}-{m:02d}-{d:02d}"
+                    return f"{y_full:04d}-{mon:02d}-{d:02d}"
             except: pass
     m1 = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', v_str)
     if m1:
-        d, m, y = int(m1.group(1)), int(m1.group(2)), int(m1.group(3))
-        if m > 12 and d <= 12: d, m = m, d 
-        if 1 <= d <= 31 and 1 <= m <= 12: return f"{y:04d}-{m:02d}-{d:02d}"
+        d, mon, y = int(m1.group(1)), int(m1.group(2)), int(m1.group(3))
+        if mon > 12 and d <= 12: d, mon = mon, d 
+        if 1 <= d <= 31 and 1 <= mon <= 12: return f"{y:04d}-{mon:02d}-{d:02d}"
     m2 = re.search(r'\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b', v_str)
     if m2:
-        y, m, d = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
-        if m > 12 and d <= 12: d, m = m, d
-        if 1 <= d <= 31 and 1 <= m <= 12: return f"{y:04d}-{m:02d}-{d:02d}"
+        y, mon, d = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
+        if mon > 12 and d <= 12: d, mon = mon, d
+        if 1 <= d <= 31 and 1 <= mon <= 12: return f"{y:04d}-{mon:02d}-{d:02d}"
     return None
 
 def clean_primary_key(x):
@@ -156,8 +163,7 @@ def make_unique(df):
     df.columns = cols
     return df
 
-_EST_NORM = sorted({re.sub(r'[^a-z0-9]','', e.lower().replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ñ','n')): i for i, e in enumerate(ESTACIONES)}.items(), key=lambda x: -len(x[0]))
-def _col_to_est_idx(col):
+def col_to_est_idx(col):
     cu = re.sub(r'[^a-z0-9]','', col.lower().replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ñ','n'))
     if 'americas' in cu: return ESTACIONES.index('Las Americas')
     if 'vina' in cu: return ESTACIONES.index('Viña del Mar')
@@ -166,7 +172,7 @@ def _col_to_est_idx(col):
     if 'concepcion' in cu: return ESTACIONES.index('La Concepcion')
     if 'villaalem' in cu: return ESTACIONES.index('Villa Alemana')
     if 'salto' in cu: return ESTACIONES.index('El Salto')
-    for nk, idx in _EST_NORM:
+    for nk, idx in EST_NORM:
         if nk in cu: return idx
     return None
 
@@ -242,13 +248,16 @@ def procesar_thdr(data, fname, via_param=1):
         if raw is None or raw.empty: return pd.DataFrame(), f"Archivo vacío o ilegible: {fname}"
         if raw.shape[0] < 6: return pd.DataFrame(), f"Archivo muy corto: {fname}"
         fecha_str = extraer_fecha_segura(raw, fname)
+        
+        # EL RELOJ SUIZO - Búsqueda de Llegada y Salida
         header_idx = 1
         for i in range(min(15, len(raw))):
             row_vals = [str(x).upper() for x in raw.iloc[i].values if pd.notna(x)]
             row_str = ' '.join(row_vals)
-            if 'VIAJE' in row_str and ('TREN' in row_str or 'MOTRIZ' in row_str or 'SFE' in row_str or 'SERVICIO' in row_str) and ('SALIDA' in row_str or 'HORA' in row_str):
+            if 'LLEGADA' in row_str and 'SALIDA' in row_str:
                 header_idx = i
                 break
+                
         r0 = raw.iloc[header_idx - 1].copy() if header_idx > 0 else raw.iloc[0].copy()
         r0.iloc[0] = np.nan 
         h1 = r0.ffill().astype(str)
@@ -268,7 +277,10 @@ def procesar_thdr(data, fname, via_param=1):
                 except: pass
         c_m1 = next((c for c in df.columns if 'motriz' in str(c).lower() and '1' in str(c).lower()), None)
         c_m2 = next((c for c in df.columns if 'motriz' in str(c).lower() and '2' in str(c).lower()), None)
-        tren_col = next((c for c in df.columns if str(c).strip() == 'Tren'), None)
+        
+        # Búsqueda flexible de la columna del Tren
+        tren_col = next((c for c in df.columns if any(k in str(c).upper() for k in ['TREN', 'SERVICIO', 'MOTRIZ'])), None)
+        
         def _get_fleet_info(r):
             def extract_n(col_name):
                 if col_name and pd.notna(r.get(col_name)):
@@ -314,9 +326,9 @@ def procesar_thdr(data, fname, via_param=1):
         def _safe_get(r, col):
             try: return r.get(col, np.nan)
             except: return np.nan
-        sal_est = {c: _col_to_est_idx(c) for c in sal_cols}
+        sal_est = {c: col_to_est_idx(c) for c in sal_cols}
         sal_est = {c: v for c, v in sal_est.items() if v is not None}
-        lle_est = {c: _col_to_est_idx(c) for c in lle_cols}
+        lle_est = {c: col_to_est_idx(c) for c in lle_cols}
         lle_est = {c: v for c, v in lle_est.items() if v is not None}
         valid_sal_cols = list(sal_est.keys())
         valid_lle_cols = list(lle_est.keys())
