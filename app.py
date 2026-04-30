@@ -303,7 +303,6 @@ def main():
                     if df_temp.empty: 
                         st.error(f"Error procesando: {msg}")
                     else:
-                        # MEJORA: Expander para la Asignación Avanzada de Flota (Rolling Stock Rostering)
                         with st.expander("🛠️ Asignación Avanzada de Flota (Rolling Stock Rostering)", expanded=False):
                             st.success("✅ Planilla decodificada. Distribuye la flota por trayecto y configuración (Simple/Doble):")
                             
@@ -401,17 +400,17 @@ def main():
             
             df_final_mem = st.session_state['plan_sint_final']
             df_e_mem = st.session_state['plan_sint_e']
-            
-            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
 
             # =========================================================================
-            # NUEVO: GENERACIÓN DE THDR TEÓRICA (ITINERARIO CINEMÁTICO)
+            # GENERACIÓN DE THDR TEÓRICA (ITINERARIO CINEMÁTICO) - MOVIDO ARRIBA
             # =========================================================================
             st.markdown("### 📄 Itinerario y Programación Operativa")
             with st.expander("Ver Tabla de Horarios de Recorrido (THDR Teórica Generada)", expanded=False):
                 st.caption("Esta tabla representa el Itinerario Cinemático: Tiempos reales de llegada y salida calculados por el motor físico considerando la masa del tren (Flota + Pax), % de tracción, pendientes y 25 segundos de detención en cada estación intermedia.")
                 
-                thdr_data = []
+                thdr_data_v1 = []
+                thdr_data_v2 = []
+
                 for idx, row in df_final_mem.iterrows():
                     via = row['Via']
                     t_ini = row['t_ini']
@@ -426,58 +425,77 @@ def main():
                     # El motor físico usa 25.0 segundos como dwell en paradas intermedias
                     dwell_mins = 25.0 / 60.0
                     total_dwell = n_paradas_intermedias * dwell_mins
-                    
-                    # Tiempo efectivo moviéndose en la vía
                     total_movimiento = max(0.1, (t_fin - t_ini) - total_dwell)
                     dist_total = abs(row['km_dest'] - row['km_orig'])
                     
                     record = {
                         'Servicio': row['num_servicio'],
-                        'Vía': f"V{via}",
                         'Flota': row['tipo_tren'],
                         'Config.': 'Doble' if row['doble'] else 'Simple',
                         'Origen': ESTACIONES[idx_o],
                         'Destino': ESTACIONES[idx_d],
                     }
                     
-                    # Inicializar todas las estaciones vacías (para mantener la matriz cuadrada)
-                    for st_name in ESTACIONES:
-                        record[st_name] = '--:--:--'
+                    # Pre-inicializar columnas en orden geográfico según la Vía
+                    est_order = ESTACIONES if via == 1 else list(reversed(ESTACIONES))
+                    for st_name in est_order:
+                        record[f'Lleg. {st_name}'] = '--:--:--'
+                        record[f'Sal. {st_name}'] = '--:--:--'
                         
                     paradas_hasta_ahora = 0
                     for i, e_idx in enumerate(est_idxs):
                         k_actual = KM_ACUM[e_idx]
                         dist_recorrida = abs(k_actual - row['km_orig'])
                         
-                        # Aproximación cinemática: tiempo distribuido por distancia
                         t_mov_parcial = total_movimiento * (dist_recorrida / dist_total) if dist_total > 0 else 0
-                        
-                        # Hora en que el tren llega y se detiene (abre puertas)
                         t_llegada = t_ini + t_mov_parcial + (paradas_hasta_ahora * dwell_mins)
                         
-                        # Hora en que el tren sale (cierra puertas). 
-                        # Si no es la última estación, se queda 25 segundos (dwell_mins)
                         if i > 0 and i < len(est_idxs) - 1:
                             t_salida = t_llegada + dwell_mins
                             paradas_hasta_ahora += 1
                         else:
                             t_salida = t_llegada
                             
-                        # Grabamos la hora de salida para la tabla THDR (Estándar Operativo)
-                        record[ESTACIONES[e_idx]] = mins_to_time_str(t_salida)
+                        est_name = ESTACIONES[e_idx]
                         
-                    thdr_data.append(record)
-                    
-                df_thdr_teorica = pd.DataFrame(thdr_data)
-                st.dataframe(df_thdr_teorica, use_container_width=True)
+                        # Lógica Operativa SCADA: Origen solo tiene Salida, Destino solo tiene Llegada
+                        if i == 0:
+                            record[f'Sal. {est_name}'] = mins_to_time_str(t_salida)
+                        elif i == len(est_idxs) - 1:
+                            record[f'Lleg. {est_name}'] = mins_to_time_str(t_llegada)
+                        else:
+                            record[f'Lleg. {est_name}'] = mins_to_time_str(t_llegada)
+                            record[f'Sal. {est_name}'] = mins_to_time_str(t_salida)
+                            
+                    if via == 1:
+                        thdr_data_v1.append(record)
+                    else:
+                        thdr_data_v2.append(record)
                 
-                csv_thdr = df_thdr_teorica.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Descargar THDR Teórica Físicamente Validada (CSV)",
-                    data=csv_thdr,
-                    file_name=f'THDR_Teorica_V118.csv',
-                    mime='text/csv'
-                )
+                # Renderizado por Vías
+                tb1, tb2 = st.tabs(["🔵 Vía 1 (PU → LI)", "🔴 Vía 2 (LI → PU)"])
+                with tb1:
+                    df_thdr_v1 = pd.DataFrame(thdr_data_v1)
+                    if not df_thdr_v1.empty:
+                        st.dataframe(df_thdr_v1, use_container_width=True)
+                        csv_thdr_v1 = df_thdr_v1.to_csv(index=False).encode('utf-8')
+                        st.download_button("📥 Descargar THDR Vía 1 (CSV)", data=csv_thdr_v1, file_name='THDR_Teorica_V1_V118.csv', mime='text/csv')
+                    else:
+                        st.info("No hay servicios planificados en Vía 1.")
+                        
+                with tb2:
+                    df_thdr_v2 = pd.DataFrame(thdr_data_v2)
+                    if not df_thdr_v2.empty:
+                        st.dataframe(df_thdr_v2, use_container_width=True)
+                        csv_thdr_v2 = df_thdr_v2.to_csv(index=False).encode('utf-8')
+                        st.download_button("📥 Descargar THDR Vía 2 (CSV)", data=csv_thdr_v2, file_name='THDR_Teorica_V2_V118.csv', mime='text/csv')
+                    else:
+                        st.info("No hay servicios planificados en Vía 2.")
+
+            st.divider()
+            
+            # GEMELO DIGITAL ESTÁTICO / ANIMADO
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
 
     with tab_mapa:
         if df_all.empty:
