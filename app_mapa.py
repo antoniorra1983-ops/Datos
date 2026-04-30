@@ -11,6 +11,7 @@ import unicodedata
 from io import BytesIO
 from config import *
 from datetime import datetime, date, timedelta
+from etl_parser import procesar_thdr, calcular_dwell, cargar_pax, match_pax, parsear_planilla_maestra
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador MERVAL", layout="wide", page_icon="🗺️")
