@@ -114,18 +114,16 @@ def main():
         n_cortes_sa_v1    = st.slider("Doble→Simple en S. Aldea (V1)",0,20,0)
         n_acoples_sa_v2   = st.slider("Simple→Doble en S. Aldea (V2)",0,20,0)
         st.divider()
-        st.subheader("⚙️ Par Parámetros de Simulación")
+        st.subheader("⚙️ Parámetros de Simulación")
         use_rm      = st.checkbox("🚦 Velocidades RM", value=False)
-        pct_trac    = st.slider("⚙️ % Tracción Nominal",30,100,75,5)
+        pct_trac    = st.slider("⚙️ % Tracción Nominal",30,100,90,5)
         use_pend    = st.toggle("⛰️ Pendientes Físicas", value=True)
         use_regen   = st.toggle("⚡ Activar Regeneración", value=True)
         tipo_regen  = st.radio("Modelo de Regeneración", ["Físico (Load Flow / Squeeze Control)", "Probabilístico (Headway Real THDR)"])
         st.divider()
         st.subheader("🌡️ Perfil de Auxiliares Dinámicos")
         mes_sel = st.selectbox("Mes de operación", ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"], index=3)
-        
         estacion_anio = MES_A_ESTACION[mes_sel]
-        
         st.divider()
         st.subheader("🔌 Contingencias Eléctricas")
         all_ser_names = [s[1] for s in SER_DATA]
@@ -229,6 +227,9 @@ def main():
     else:
         fechas = []
 
+    # =========================================================================
+    # ESTADO A: MODO PLANIFICADOR PURO (SIN ARCHIVOS BASE)
+    # =========================================================================
     if df_all.empty and df_px.empty:
         st.info("📂 Sube tus archivos THDR y/o Carga de Pasajeros en la barra lateral para generar los reportes y el Gemelo Digital Operativo.")
         st.divider()
@@ -263,7 +264,10 @@ def main():
                 df_plan_edit = pd.DataFrame()
                 if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
             
-        if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
+        # =====================================================================
+        # SOLUCIÓN: Desacoplar el Cálculo (Botón) del Renderizado (Estado)
+        # =====================================================================
+        if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_empty"):
             with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                 if modo_plan == "Matriz Sintética":
                     df_sintetico_list = []
@@ -341,12 +345,26 @@ def main():
                     
                 df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
                 
-                st.divider()
-                st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
-                
-                render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_sint_final['pax_abordo'].sum()))
+                # Guardamos en Memoria (Session State) para que el slider no lo borre
+                st.session_state['plan_1_sint_final'] = df_sint_final
+                st.session_state['plan_1_sint_e'] = df_sint_e
+                st.session_state['plan_1_ready'] = True
+
+        # RENDERIZADO CONTINUO (Fuera del botón)
+        if st.session_state.get('plan_1_ready', False):
+            st.divider()
+            st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
+            
+            df_final_mem = st.session_state['plan_1_sint_final']
+            df_e_mem = st.session_state['plan_1_sint_e']
+            
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan_empty", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
+
+    # =========================================================================
+    # ESTADO B: CON ARCHIVOS CARGADOS (TABS NORMALES)
+    # =========================================================================
     else:
-        tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros (Directo)", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
+        tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
         
         with tab_planificador:
             st.subheader("🔮 Planificador Avanzado: Gemelo Digital de Inyecciones (V117)")
@@ -379,7 +397,10 @@ def main():
                     df_plan_edit = pd.DataFrame()
                     if archivo_planilla: st.success("Planilla detectada. Lista para simular.")
                 
-            if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary"):
+            # =================================================================
+            # SOLUCIÓN: Desacoplar el Cálculo (Botón) del Renderizado (Estado)
+            # =================================================================
+            if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_full"):
                 with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                     
                     if modo_plan == "Matriz Sintética":
@@ -458,10 +479,20 @@ def main():
                         
                     df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
                     
-                    st.divider()
-                    st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
-                    
-                    render_gemelo_digital(df_sint_final, df_sint_e, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_sint_final['pax_abordo'].sum()))
+                    # Guardamos en Memoria (Session State)
+                    st.session_state['plan_2_sint_final'] = df_sint_final
+                    st.session_state['plan_2_sint_e'] = df_sint_e
+                    st.session_state['plan_2_ready'] = True
+
+            # RENDERIZADO CONTINUO (Fuera del botón)
+            if st.session_state.get('plan_2_ready', False):
+                st.divider()
+                st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
+                
+                df_final_mem = st.session_state['plan_2_sint_final']
+                df_e_mem = st.session_state['plan_2_sint_e']
+                
+                render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {tipo_dia_plan} ({estacion_anio_plan.capitalize()})", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan_full", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
 
         with tab_mapa:
             if df_all.empty:
