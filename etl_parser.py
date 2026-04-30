@@ -292,8 +292,7 @@ def procesar_thdr(data, fname, via_param=1):
         
         cols = []
         for s, t in zip(h1, h2):
-            s_val = str(s).strip()
-            t_val = str(t).strip()
+            s_val, t_val = str(s).strip(), str(t).strip()
             if s_val.lower() == 'nan' or not s_val: cols.append(t_val)
             elif t_val: cols.append(f"{s_val}_{t_val}")
             else: cols.append(s_val)
@@ -614,12 +613,19 @@ def parsear_planilla_maestra(data, fname):
                     es_doble = True if 'MÚLTIPLE' in config_str or 'MULT' in config_str else False
                     via = 1 if viaje_num % 2 == 0 else 2
                     
+                    # Asignación de rutas según numeración operativa (EFE)
                     if via == 1:
-                        km_orig = KM_ACUM[0] 
-                        km_dest = KM_ACUM[20] 
+                        km_orig = KM_ACUM[0] # Puerto
+                        if servicio_num >= 600: km_dest = KM_ACUM[20] # Limache
+                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] # Sargento Aldea
+                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] # El Belloto
+                        else: km_dest = KM_ACUM[20] # Fallback
                     else:
-                        km_orig = KM_ACUM[20] 
-                        km_dest = KM_ACUM[0] 
+                        km_dest = KM_ACUM[0] # Puerto
+                        if servicio_num >= 600: km_orig = KM_ACUM[20] # Limache
+                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] # Sargento Aldea
+                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] # El Belloto
+                        else: km_orig = KM_ACUM[20] # Fallback
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
@@ -644,12 +650,19 @@ def parsear_planilla_maestra(data, fname):
                     es_doble = True if 'MÚLTIPLE' in config_str or 'MULT' in config_str else False
                     via = 1 if viaje_num % 2 == 0 else 2
                     
+                    # Asignación de rutas según numeración operativa (EFE)
                     if via == 1:
-                        km_orig = KM_ACUM[0] 
-                        km_dest = KM_ACUM[20] 
+                        km_orig = KM_ACUM[0] # Puerto
+                        if servicio_num >= 600: km_dest = KM_ACUM[20] # Limache
+                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] # Sargento Aldea
+                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] # El Belloto
+                        else: km_dest = KM_ACUM[20] # Fallback
                     else:
-                        km_orig = KM_ACUM[20] 
-                        km_dest = KM_ACUM[0] 
+                        km_dest = KM_ACUM[0] # Puerto
+                        if servicio_num >= 600: km_orig = KM_ACUM[20] # Limache
+                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] # Sargento Aldea
+                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] # El Belloto
+                        else: km_orig = KM_ACUM[20] # Fallback
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
