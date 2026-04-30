@@ -226,7 +226,92 @@ def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
             else: break
     return int(pax_val)
 
-@st.cache_data(show_spinner="Calculando Carrusel de Cocheras...")
+# =========================================================================
+# LECTOR OFICIAL EFE DE KILÓMETROS EN VACÍO
+# =========================================================================
+def cargar_vacios_efe(data, fname):
+    try:
+        ext = fname.lower()
+        if ext.endswith('.csv'):
+            try: raw = pd.read_csv(BytesIO(data), sep=',', encoding='utf-8')
+            except: raw = pd.read_csv(BytesIO(data), sep=';', encoding='latin-1')
+        else:
+            eng = "xlrd" if ext.endswith(".xls") else "openpyxl"
+            raw = pd.read_excel(BytesIO(data), engine=eng)
+
+        if raw is None or raw.empty: return pd.DataFrame()
+        
+        fecha_str = extraer_fecha_segura(raw, fname)
+        raw.columns = [str(c).strip().upper() for c in raw.columns]
+        
+        col_tren = next((c for c in raw.columns if 'TREN' in c), None)
+        col_hora = next((c for c in raw.columns if 'HORA' in c), None)
+        col_desde = next((c for c in raw.columns if 'DESDE' in c), None)
+        col_hasta = next((c for c in raw.columns if 'HASTA' in c), None)
+        col_kms = next((c for c in raw.columns if 'KMS' in c), None)
+        
+        if not all([col_tren, col_hora, col_desde, col_hasta]): return pd.DataFrame()
+        
+        viajes = []
+        for _, r in raw.iterrows():
+            tren = str(r[col_tren]).strip()
+            hora = str(r[col_hora]).strip()
+            desde = str(r[col_desde]).strip()
+            hasta = str(r[col_hasta]).strip()
+            kms_str = str(r.get(col_kms, '0')).replace(',', '.')
+            
+            if tren in ('nan', '') or hora in ('nan', ''): continue
+            t_ini = parse_time_to_mins(hora)
+            if t_ini is None: continue
+            
+            try: kms = float(kms_str)
+            except: kms = 0.0
+            
+            tren_upper = tren.upper()
+            m_num = re.search(r'\d+', tren_upper)
+            num = int(m_num.group(0)) if m_num else 0
+            if 'SFE' in tren_upper: tipo_tren = 'SFE'
+            elif 'XT' in tren_upper:
+                if 28 <= num <= 35: tipo_tren = 'XT-M'
+                else: tipo_tren = 'XT-100'
+            else: tipo_tren = 'XT-100'
+            
+            def _map_est(name):
+                n = name.upper()
+                if 'COCHERA' in n or 'TALLER' in n: return 14 # El Belloto
+                if 'ALDEA' in n: return 18
+                if 'LIMACHE' in n: return 20
+                if 'PUERTO' in n: return 0
+                if 'BELLOTO' in n: return 14
+                idx = _col_to_est_idx(n)
+                return idx if idx is not None else 14
+                
+            idx_orig = _map_est(desde)
+            idx_dest = _map_est(hasta)
+            km_orig = KM_ACUM[idx_orig]
+            km_dest = KM_ACUM[idx_dest]
+            via = 1 if km_orig <= km_dest else 2
+            
+            viajes.append({
+                'Fecha_str': fecha_str,
+                't_ini': t_ini,
+                'tipo_tren': tipo_tren,
+                'doble': False,
+                'origen_txt': desde,
+                'destino_txt': hasta,
+                'km_orig': km_orig,
+                'km_dest': km_dest,
+                'dist': kms,
+                'Via': via,
+                'motriz_num': tren,
+                'is_efe': True,
+                'cochera': 'COCHERA' in desde.upper() or 'COCHERA' in hasta.upper()
+            })
+        return pd.DataFrame(viajes)
+    except Exception as e:
+        return pd.DataFrame()
+
+@st.cache_data(show_spinner="Calculando Carrusel Teórico de Cocheras...")
 def get_vacios_dia(df_dia):
     vacios = []
     if df_dia.empty: return vacios
@@ -613,19 +698,18 @@ def parsear_planilla_maestra(data, fname):
                     es_doble = True if 'MÚLTIPLE' in config_str or 'MULT' in config_str else False
                     via = 1 if viaje_num % 2 == 0 else 2
                     
-                    # Asignación de rutas según numeración operativa (EFE)
                     if via == 1:
-                        km_orig = KM_ACUM[0] # Puerto
-                        if servicio_num >= 600: km_dest = KM_ACUM[20] # Limache
-                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] # Sargento Aldea
-                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] # El Belloto
-                        else: km_dest = KM_ACUM[20] # Fallback
+                        km_orig = KM_ACUM[0] 
+                        if servicio_num >= 600: km_dest = KM_ACUM[20] 
+                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] 
+                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] 
+                        else: km_dest = KM_ACUM[20] 
                     else:
-                        km_dest = KM_ACUM[0] # Puerto
-                        if servicio_num >= 600: km_orig = KM_ACUM[20] # Limache
-                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] # Sargento Aldea
-                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] # El Belloto
-                        else: km_orig = KM_ACUM[20] # Fallback
+                        km_dest = KM_ACUM[0] 
+                        if servicio_num >= 600: km_orig = KM_ACUM[20] 
+                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] 
+                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] 
+                        else: km_orig = KM_ACUM[20] 
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
@@ -650,19 +734,18 @@ def parsear_planilla_maestra(data, fname):
                     es_doble = True if 'MÚLTIPLE' in config_str or 'MULT' in config_str else False
                     via = 1 if viaje_num % 2 == 0 else 2
                     
-                    # Asignación de rutas según numeración operativa (EFE)
                     if via == 1:
-                        km_orig = KM_ACUM[0] # Puerto
-                        if servicio_num >= 600: km_dest = KM_ACUM[20] # Limache
-                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] # Sargento Aldea
-                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] # El Belloto
-                        else: km_dest = KM_ACUM[20] # Fallback
+                        km_orig = KM_ACUM[0] 
+                        if servicio_num >= 600: km_dest = KM_ACUM[20] 
+                        elif 400 <= servicio_num <= 599: km_dest = KM_ACUM[18] 
+                        elif 200 <= servicio_num <= 399: km_dest = KM_ACUM[14] 
+                        else: km_dest = KM_ACUM[20] 
                     else:
-                        km_dest = KM_ACUM[0] # Puerto
-                        if servicio_num >= 600: km_orig = KM_ACUM[20] # Limache
-                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] # Sargento Aldea
-                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] # El Belloto
-                        else: km_orig = KM_ACUM[20] # Fallback
+                        km_dest = KM_ACUM[0] 
+                        if servicio_num >= 600: km_orig = KM_ACUM[20] 
+                        elif 400 <= servicio_num <= 599: km_orig = KM_ACUM[18] 
+                        elif 200 <= servicio_num <= 399: km_orig = KM_ACUM[14] 
+                        else: km_orig = KM_ACUM[20] 
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
