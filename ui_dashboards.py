@@ -337,8 +337,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             km_fake_fin = v['km_orig'] + v['dist'] if is_local_move else v['km_dest']
             via_vacia = 1 if v['km_orig'] <= km_fake_fin else 2
             
-            # SOLUCIÓN: La función simular_tramo_termodinamico espera estrictamente 15 parámetros posicionales.
-            # Quitamos el último argumento (, True) para que encaje perfectamente con la firma en tu motor físico.
             trc_v, aux_v, reg_v, _, _, t_horas_v = simular_tramo_termodinamico(
                 v['tipo'], v.get('doble', False), v['km_orig'], km_fake_fin, 
                 via_vacia, pct_trac, use_rm, use_pend if not is_local_move else False, 
@@ -355,8 +353,11 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             vacio_kwh_total += e_pant_vacio
             energy_by_fleet[v['tipo']] += e_pant_vacio
 
+    # --- INICIALIZACIÓN SEGURA DE ACUMULADORES FÍSICOS (FAIL-FAST FIX) ---
     t_regen_acum = 0.0
     t_reostato_acum = 0.0
+    t_trac, t_aux, t_regen, t_reostato, t_neto = 0.0, 0.0, 0.0, 0.0, 0.0
+    # ---------------------------------------------------------------------
 
     for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
         t_eval = min(hora_m1, r['t_fin'])
@@ -692,7 +693,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 with sr2:
                     st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh** \n*Considera pérdidas dinámicas de transmisión AC 44kV (I²R) integradas y eficiencia del transformador de potencia (99%).*")
 
-                t_reostato = t_reostat
                 fig_pie = go.Figure(data=[go.Pie(
                     labels=['Tracción', 'Auxiliar', 'Regeneración Útil', 'Pérdida Reóstato'], 
                     values=[t_trac, t_aux, t_regen, t_reostato], 
