@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -124,8 +123,9 @@ def main():
         st.divider()
         st.subheader("🌡️ Perfil de Auxiliares Dinámicos")
         mes_sel = st.selectbox("Mes de operación", ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"], index=3)
-        _MES_A_ESTACION = {"Enero":"verano","Febrero":"verano","Marzo":"otoño","Abril":"otoño","Mayo":"otoño","Junio":"invierno","Julio":"invierno","Agosto":"invierno","Septiembre":"primavera","Octubre":"primavera","Noviembre":"primavera","Diciembre":"verano"}
-        estacion_anio = _MES_A_ESTACION[mes_sel]
+        
+        estacion_anio = MES_A_ESTACION[mes_sel]
+        
         st.divider()
         st.subheader("🔌 Contingencias Eléctricas")
         all_ser_names = [s[1] for s in SER_DATA]
