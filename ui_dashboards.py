@@ -1,4 +1,3 @@
-# ui_dashboards.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -499,7 +498,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 <span style='font-size:11px; color:#555;'>XT-100: <b style='color:#111;'>{xt100_c}</b> | XT-M: <b style='color:#111;'>{xtm_c}</b> | SFE: <b style='color:#111;'>{sfe_c}</b></span>
             </div>
             """
-            cols_svc_ac[ci].markdown(html_card, unsafe_allow_html=True)
+            if ci < len(cols_svc_ac):
+                cols_svc_ac[ci].markdown(html_card, unsafe_allow_html=True)
             ci += 1
         
         st.markdown("##### ⚡ Consumo Energético Acumulado por Tipo de Tren (Neto Pantógrafo)")
