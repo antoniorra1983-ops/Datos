@@ -1,4 +1,3 @@
-# red_electrica.py
 from config import *
 
 def calcular_demanda_ser(e_pantografo_kwh, t_horas, km_punto, km_ser):
