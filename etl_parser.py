@@ -34,8 +34,8 @@ def parse_time_to_mins(val):
     if ' ' in sv: sv = sv.split(' ')[-1]
     m = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', sv)
     if m:
-        h = int(m.group(1)); m_min = int(m.group(2)); s_sec = int(m.group(3)) if m.group(3) else 0
-        return h * 60.0 + m_min + s_sec / 60.0
+        h = int(m.group(1)); m_min = int(m.group(2)); s_sec = int(m.group(3)) / 60.0 if m.group(3) else 0.0
+        return h * 60.0 + m_min + s_sec
     try:
         f = float(sv)
         if f < 1.0: return f * 1440.0
@@ -46,9 +46,9 @@ def parse_time_to_mins(val):
 def parse_excel_date(val):
     if pd.isna(val): return None
     if isinstance(val, (datetime, pd.Timestamp)): return val.strftime('%Y-%m-%d')
-    v_str = str(val).strip()
+    v_str = re.sub(r'\.0+$', '', str(val).strip()).split(' ')[0]
     if not v_str or v_str.lower() in ['nan', 'none', 'fecha', 'date', 'nat']: return None
-    v_str = re.sub(r'\.0+$', '', v_str).split(' ')[0]
+    
     if v_str.isdigit():
         v_int = int(v_str)
         if 40000 <= v_int <= 60000:
@@ -58,9 +58,7 @@ def parse_excel_date(val):
             s_pad = v_str.zfill(6)
             try:
                 d, mon, y = int(s_pad[0:2]), int(s_pad[2:4]), int(s_pad[4:6])
-                if 1 <= d <= 31 and 1 <= mon <= 12:
-                    y_full = 2000 + y if y < 100 else y
-                    return f"{y_full:04d}-{mon:02d}-{d:02d}"
+                if 1 <= d <= 31 and 1 <= mon <= 12: return f"{2000+y if y<100 else y:04d}-{mon:02d}-{d:02d}"
             except: pass
     m1 = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', v_str)
     if m1:
@@ -191,18 +189,12 @@ def calc_tren_km_real_general(row):
 def get_perfiles_pax(df_px):
     if df_px.empty: return {}
     df_p = df_px.copy()
-    
     df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha_s'], errors='coerce')
     df_p = df_p.dropna(subset=['Fecha_dt'])
-    
     if df_p.empty: return {}
-    
-    df_p['Tipo_Dia'] = df_p['Fecha_s'].apply(clasificar_dia)
-    
+    df_p['Tipo_Dia'] = df_p['Fecha_dt'].apply(clasificar_dia)
     for c in PAX_COLS + ['CargaMax']:
-        if c in df_p.columns:
-            df_p[c] = pd.to_numeric(df_p[c], errors='coerce').fillna(0)
-            
+        if c in df_p.columns: df_p[c] = pd.to_numeric(df_p[c], errors='coerce').fillna(0)
     perfiles = {}
     for t_dia in ['Laboral', 'Sábado', 'Domingo/Festivo']:
         for via in [1, 2]:
@@ -214,39 +206,55 @@ def get_perfiles_pax(df_px):
                 promedios = {c: 0 for c in PAX_COLS}
                 promedios['CargaMax_Promedio'] = 0
             perfiles[(t_dia, via)] = promedios
-            
     return perfiles
+
+def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
+    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
+    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
+    pax_val = 0
+    if via == 1:
+        for i in range(N_EST):
+            if km_pos >= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    else:
+        for i in range(N_EST - 1, -1, -1):
+            if km_pos <= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    return int(pax_val)
 
 @st.cache_data(show_spinner="Calculando Carrusel de Cocheras...")
 def get_vacios_dia(df_dia):
     vacios = []
     if df_dia.empty: return vacios
     agrupador = 'motriz_num' if 'motriz_num' in df_dia.columns else 'num_servicio'
-    
     def _get_est_name(km):
         if pd.isna(km): return "Desconocido"
         dists = [abs(km - k) for k in KM_ACUM]
         idx = int(np.argmin(dists))
-        return ESTACIONES[idx] if dists[idx] <= 1.5 else f"km {km:.1f}"
-        
+        if dists[idx] <= 1.5:
+            return ESTACIONES[idx]
+        return f"km {km:.1f}"
     for tren, group in df_dia.sort_values('t_ini').groupby(agrupador):
         if str(tren).strip() == '' or str(tren).strip() == 'nan': continue
         viajes = group.to_dict('records')
         if not viajes: continue
-        
         p = viajes[0]
         if abs(p.get('km_orig', 0) - KM_ACUM[14]) < 0.1:
             vacios.append({'t_asigned': p['t_ini'] - 10, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'El Belloto', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
         elif abs(p.get('km_orig', 0) - KM_ACUM[18]) < 0.1:
             vacios.append({'t_asigned': p['t_ini'] - 20, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'Sargento Aldea', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
-            
         for i in range(len(viajes) - 1):
-            actual, sig = viajes[i], viajes[i+1]
-            k_o, k_d = actual.get('km_dest', 0), sig.get('km_orig', 0)
+            actual = viajes[i]
+            sig = viajes[i+1]
+            k_o = actual.get('km_dest', 0)
+            k_d = sig.get('km_orig', 0)
             dist = abs(k_o - k_d)
             if 0.1 < dist <= 20.0:
                 vacios.append({'t_asigned': actual['t_fin'] + 5, 'tipo': actual.get('tipo_tren', 'XT-100'), 'doble': actual.get('doble', False), 'cochera': False, 'km_orig': k_o, 'km_dest': k_d, 'dist': dist, 'motriz_num': tren, 'origen_txt': _get_est_name(k_o), 'destino_txt': _get_est_name(k_d), 'servicio_previo': str(actual.get('num_servicio', '')), 'servicio_siguiente': str(sig.get('num_servicio', ''))})
-                
         u = viajes[-1]
         if abs(u.get('km_dest', 0) - KM_ACUM[14]) < 0.1:
             vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'El Belloto', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
@@ -550,7 +558,7 @@ def match_pax(row, df_pax):
     if pd.notna(t_i):
         best_match = sub.loc[sub['diff'].idxmin()]
         if best_match['diff'] <= 15: 
-            return {c: _to_int(best_match.get(c, 0)) for c in PAX_COLS}, _to_int(best_match.get('CargaMax', 0)), mins_to_time_str(best_match.get('t_ini_p')), str(best_match.get('Nro_THDR', '')), best_match.name
+            return {c: _to_int(best_match.get(c, 0)) for c in PAX_COLS}, _to_int(best_match.get('CargaMax', 0)), mins_to_time_str(best_match.get('t_ini_p')), str(best.get('Nro_THDR', '')), best_match.name
 
     return EMPTY
 
@@ -568,7 +576,6 @@ def parsear_planilla_maestra(data, fname):
             
         viajes = []
         for sheet_name, df in dfs.items():
-            # Filtrado estricto de hojas: Solo considerar V1 y V2
             if not ext.endswith('.csv'):
                 sheet_upper = str(sheet_name).upper()
                 if not any(k in sheet_upper for k in ['V1', 'VIA 1', 'VÍA 1', 'V2', 'VIA 2', 'VÍA 2']):
@@ -583,8 +590,6 @@ def parsear_planilla_maestra(data, fname):
                     
             if header_idx != -1:
                 headers = df.iloc[header_idx].fillna('').astype(str).str.upper()
-                
-                # Mapeo exacto según estructura indicada (A=Viaje, B=Servicio, C=Hr Partida, F=Unidad)
                 c_viaje = next((i for i, h in enumerate(headers) if 'VIAJE' in h or h == 'N°' or h == 'N'), 0)
                 c_srv = next((i for i, h in enumerate(headers) if 'SERV' in h or 'TREN' in h), 1)
                 c_hora = next((i for i, h in enumerate(headers) if 'PARTIDA' in h or 'HORA' in h), 2)
@@ -593,7 +598,6 @@ def parsear_planilla_maestra(data, fname):
                 for i in range(header_idx + 1, len(df)):
                     row = df.iloc[i]
                     if len(row) <= max(c_viaje, c_srv, c_hora): continue
-                    
                     hora_str = str(row[c_hora]).strip()
                     srv_str = str(row[c_srv]).strip()
                     viaje_str = str(row[c_viaje]).strip()
@@ -602,20 +606,14 @@ def parsear_planilla_maestra(data, fname):
                     m_viaje = re.search(r'(\d+)', viaje_str)
                     m_srv = re.search(r'(\d+)', srv_str)
                     if not m_viaje or not m_srv: continue
-                    
                     viaje_num = int(m_viaje.group(1))
                     servicio_num = int(m_srv.group(1))
-                    
                     t_ini = parse_time_to_mins(hora_str)
                     if t_ini is None: continue
 
-                    # Regla estricta: Múltiple para trenes dobles, vacío o 'Simple' para simples
                     es_doble = True if 'MÚLTIPLE' in config_str or 'MULT' in config_str else False
-
-                    # Regla EFE estricta: N° Viaje pares para Vía 1, impares para Vía 2
                     via = 1 if viaje_num % 2 == 0 else 2
                     
-                    # Garantizar continuidad del tipo de servicio (siempre ruta completa)
                     if via == 1:
                         km_orig = KM_ACUM[0] 
                         km_dest = KM_ACUM[20] 
@@ -625,19 +623,11 @@ def parsear_planilla_maestra(data, fname):
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
-                    
-                    viajes.append({
-                        '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
-                        'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
-                        'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
-                        'maniobra': None
-                    })
+                    viajes.append({'_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via, 'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via, 'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta, 'maniobra': None})
             else:
-                # Fallback estricto si no hay fila de cabecera detectada, usando índices fijos 0, 1, 2, 5
                 for i in range(len(df)):
                     row = df.iloc[i].fillna('').astype(str).tolist()
                     if len(row) <= 2: continue
-                    
                     viaje_str = row[0].strip()
                     srv_str = row[1].strip()
                     hora_str = row[2].strip()
@@ -646,10 +636,8 @@ def parsear_planilla_maestra(data, fname):
                     m_viaje = re.search(r'(\d+)', viaje_str)
                     m_srv = re.search(r'(\d+)', srv_str)
                     if not m_viaje or not m_srv: continue
-                    
                     viaje_num = int(m_viaje.group(1))
                     servicio_num = int(m_srv.group(1))
-                    
                     t_ini = parse_time_to_mins(hora_str)
                     if t_ini is None: continue
 
@@ -665,13 +653,7 @@ def parsear_planilla_maestra(data, fname):
                         
                     ruta = f"{EC[KM_ACUM.index(km_orig)]}-{EC[KM_ACUM.index(km_dest)]}"
                     nodos_via = [(0.0, k) for k in (KM_ACUM[KM_ACUM.index(km_orig):KM_ACUM.index(km_dest)+1] if via==1 else KM_ACUM[KM_ACUM.index(km_dest):KM_ACUM.index(km_orig)+1][::-1])]
-                    
-                    viajes.append({
-                        '_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via,
-                        'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via,
-                        'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta,
-                        'maniobra': None
-                    })
+                    viajes.append({'_id': f"PLAN_{servicio_num}_{int(t_ini)}", 't_ini': t_ini, 'Via': via, 'km_orig': km_orig, 'km_dest': km_dest, 'nodos': nodos_via, 'tipo_tren': 'XT-100', 'doble': es_doble, 'num_servicio': str(servicio_num), 'svc_type': ruta, 'maniobra': None})
                         
         df_viajes = pd.DataFrame(viajes)
         if not df_viajes.empty: df_viajes = df_viajes.drop_duplicates(subset=['_id'])
