@@ -1,4 +1,3 @@
-# motor_fisico.py
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -6,7 +5,7 @@ from config import *
 from red_electrica import *
 from etl_parser import calc_tren_km_real_general, get_pax_at_km
 
-def _build_profile(use_rm, via):
+def build_profile(use_rm, via):
     segs = SPEED_PROFILE if via == 1 else list(reversed(SPEED_PROFILE))
     km_pts, t_pts, cum_t = [], [], 0.0
     for ki, kf, dm, vn, vr in segs:
@@ -19,26 +18,26 @@ def _build_profile(use_rm, via):
     t_pts.append(cum_t)
     return np.array(km_pts, float), np.array(t_pts, float)
 
-_PROF = {(v, r): _build_profile(r, v) for v in [1, 2] for r in [False, True]}
-_PROF_SORTED = {}
-for k, v in _PROF.items():
-    if k[0] == 1: _PROF_SORTED[k] = (v[0], v[1])
-    else: _PROF_SORTED[k] = (v[0][::-1].copy(), v[1][::-1].copy())
+PROF = {(v, r): build_profile(r, v) for v in [1, 2] for r in [False, True]}
+PROF_SORTED = {}
+for k, v in PROF.items():
+    if k[0] == 1: PROF_SORTED[k] = (v[0], v[1])
+    else: PROF_SORTED[k] = (v[0][::-1].copy(), v[1][::-1].copy())
 
-_VEL_ARRAY_NORM = np.zeros(45000, dtype=float)
-_VEL_ARRAY_RM = np.zeros(45000, dtype=float)
+VEL_ARRAY_NORM = np.zeros(45000, dtype=float)
+VEL_ARRAY_RM = np.zeros(45000, dtype=float)
 for ki, kf, _, vn, vr in SPEED_PROFILE:
     start_idx = int(ki)
     end_idx = int(kf) + 1
     if end_idx > 45000: end_idx = 45000
-    _VEL_ARRAY_NORM[start_idx:end_idx] = vn
-    _VEL_ARRAY_RM[start_idx:end_idx] = vr
+    VEL_ARRAY_NORM[start_idx:end_idx] = vn
+    VEL_ARRAY_RM[start_idx:end_idx] = vr
 
 def vel_at_km(km_km, via, use_rm):
     idx = int(km_km * 1000.0)
     if idx < 0: return 0.0
     if idx >= 45000: return 0.0
-    return _VEL_ARRAY_RM[idx] if use_rm else _VEL_ARRAY_NORM[idx]
+    return VEL_ARRAY_RM[idx] if use_rm else VEL_ARRAY_NORM[idx]
 
 def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodos=None, t_arr=None):
     if nodos is not None and len(nodos) >= 2:
@@ -51,19 +50,19 @@ def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodo
         if t_A == t_B: return k_A
         if k_A == k_B: return k_A 
         frac = (t - t_A) / (t_B - t_A)
-        km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
+        km_sorted, t_sorted = PROF_SORTED[(via, use_rm)]
         t_prof_A = float(np.interp(k_A * 1000.0, km_sorted, t_sorted))
         t_prof_B = float(np.interp(k_B * 1000.0, km_sorted, t_sorted))
         t_prof_target = t_prof_A + frac * (t_prof_B - t_prof_A)
-        km_arr, t_prof_arr = _PROF[(via, use_rm)]
+        km_arr, t_prof_arr = PROF[(via, use_rm)]
         km_m = float(np.interp(t_prof_target, t_prof_arr, km_arr))
         return max(0.0, min(km_m / 1000.0, KM_TOTAL))
         
     dur = t_fin - t_ini
     if dur <= 0: return km_orig if km_orig is not None else (0.0 if via==1 else KM_TOTAL)
     frac = max(0.0, min(1.0, (t - t_ini) / dur))
-    km_arr, t_arr_prof = _PROF[(via, use_rm)]
-    km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
+    km_arr, t_arr_prof = PROF[(via, use_rm)]
+    km_sorted, t_sorted = PROF_SORTED[(via, use_rm)]
     
     if km_orig is None: km_orig = 0.0     if via == 1 else KM_TOTAL
     if km_dest is None: km_dest = KM_TOTAL if via == 1 else 0.0
@@ -90,9 +89,7 @@ def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=N
 
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
     hora_int = int(hora_decimal) % 24
-    # QUITAMOS EL GUION BAJO AQUÍ TAMBIÉN:
     perfil = AUX_HVAC_HORA.get(estacion_anio, AUX_HVAC_HORA["primavera"])
-    
     if cap_max > 0:
         ocup = min(1.0, pax_abordo / cap_max)
         if estacion_anio == "verano": f_ocup = 1.0 + 0.05 * ocup
@@ -100,9 +97,9 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
         else: f_ocup = 1.0 - 0.06 * ocup
     else:
         f_ocup = 1.0
-    f_marcha = _FACTOR_DWELL_COMPRESOR if estado_marcha == "DWELL" else 1.0 # Nota: Si _FACTOR_DWELL_COMPRESOR da error, quítale el guion bajo en config.py también.
-    aux_base = aux_kw_nominal * _FRAC_BASE
-    aux_hvac = aux_kw_nominal * _FRAC_HVAC * f_hvac * f_ocup * f_marcha
+    f_marcha = FACTOR_DWELL_COMPRESOR if estado_marcha == "DWELL" else 1.0
+    aux_base = aux_kw_nominal * FRAC_BASE
+    aux_hvac = aux_kw_nominal * FRAC_HVAC * perfil[hora_int] * f_ocup * f_marcha
     return aux_base + aux_hvac
 
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0):
@@ -161,9 +158,9 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 
             f_pend = 0.0
             if use_pend:
-                for j in range(1, len(_ELEV_KM)):
-                    if _ELEV_KM[j-1] <= km_actual <= _ELEV_KM[j] or (j == len(_ELEV_KM)-1 and km_actual > _ELEV_KM[j]):
-                        pend = ((_ELEV_M[j] - _ELEV_M[j-1]) / max(0.001, (_ELEV_KM[j] - _ELEV_KM[j-1])*1000)) * 1000
+                for j in range(1, len(ELEV_KM)):
+                    if ELEV_KM[j-1] <= km_actual <= ELEV_KM[j] or (j == len(ELEV_KM)-1 and km_actual > ELEV_KM[j]):
+                        pend = ((ELEV_M[j] - ELEV_M[j-1]) / max(0.001, (ELEV_KM[j] - ELEV_KM[j-1])*1000)) * 1000
                         f_pend = DAVIS_E_N_PERMIL * pend * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0)
                         break
                         
@@ -273,7 +270,7 @@ def calcular_receptividad_por_headway(df_dia: pd.DataFrame) -> dict:
             result[idx] = min(eta, 0.90)
     return result
 
-@st.cache_data(show_spinner="Simulando malla eléctrica y receptividad V1/V2 (Balance Nodal - 5km)...")
+@st.cache_data(show_spinner="Simulando malla eléctrica y receptividad V1/V2 (Balance Nodal)...")
 def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="primavera"):
     regen_util_per_trip = {idx: 0.0 for idx in df_dia.index}
     braking_ticks_per_trip = {idx: 0.0 for idx in df_dia.index} 
