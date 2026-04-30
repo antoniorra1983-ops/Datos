@@ -304,50 +304,53 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
         df_act['tooltip'] = df_act.apply(_make_tooltip_and_power, axis=1)
 
-    vacios_dia = get_vacios_dia(df_dia)
-    for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
-        man = row['maniobra']
-        t_arr_bto = row['t_ini'] + 40.0 if row['Via'] == 1 else row['t_ini'] + 20.0
-        t_arr_sa = row['t_ini'] + 47.0 if row['Via'] == 1 else row['t_ini'] + 13.0
-        dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
-        
-        if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
-            vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-        elif man == 'ACOPLE_BTO':
-            vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-        elif man == 'CORTE_SA':
-            vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
-        elif man == 'ACOPLE_SA':
-            vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
-
-    vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
-    vacio_count = len(vacios_hasta_ahora)
-    vacio_km_total = sum(v['dist'] * (2 if v.get('doble', False) else 1) for v in vacios_hasta_ahora)
+    vacios_hasta_ahora = []
     vacio_kwh_total = 0.0
-
-    ser_accum_1 = {name: 0.0 for _, name in active_sers}
+    vacio_km_total = 0.0
+    vacio_count = 0
     energy_by_fleet = {'XT-100': 0.0, 'XT-M': 0.0, 'SFE': 0.0}
+    ser_accum_1 = {name: 0.0 for _, name in active_sers}
     
-    for v in vacios_hasta_ahora:
-        is_local_move = (v.get('km_orig') == v.get('km_dest'))
-        km_fake_fin = v['km_orig'] + v['dist'] if is_local_move else v['km_dest']
-        via_vacia = 1 if v['km_orig'] <= km_fake_fin else 2
+    if prefix_key == "mapa":
+        vacios_dia = get_vacios_dia(df_dia)
+        for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
+            man = row['maniobra']
+            t_arr_bto = row['t_ini'] + 40.0 if row['Via'] == 1 else row['t_ini'] + 20.0
+            t_arr_sa = row['t_ini'] + 47.0 if row['Via'] == 1 else row['t_ini'] + 13.0
+            dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
+            
+            if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
+                vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            elif man == 'ACOPLE_BTO':
+                vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            elif man == 'CORTE_SA':
+                vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+            elif man == 'ACOPLE_SA':
+                vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+
+        vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
+        vacio_count = len(vacios_hasta_ahora)
+        vacio_km_total = sum(v['dist'] * (2 if v.get('doble', False) else 1) for v in vacios_hasta_ahora)
         
-        trc_v, aux_v, reg_v, _, _, t_horas_v = simular_tramo_termodinamico(
-            v['tipo'], v.get('doble', False), v['km_orig'], km_fake_fin, 
-            via_vacia, pct_trac, use_rm, use_pend if not is_local_move else False, 
-            None, {}, 0, 20.0 if is_local_move else None, None, estacion_anio, v.get('t_asigned', 480.0)
-        )
-        
-        e_pant_vacio = trc_v + aux_v - reg_v
-        
-        if active_sers:
-            distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
-            for s_name, e_val in distrib_sers.items():
-                ser_accum_1[s_name] += e_val
-                
-        vacio_kwh_total += e_pant_vacio
-        energy_by_fleet[v['tipo']] += e_pant_vacio
+        for v in vacios_hasta_ahora:
+            is_local_move = (v.get('km_orig') == v.get('km_dest'))
+            km_fake_fin = v['km_orig'] + v['dist'] if is_local_move else v['km_dest']
+            via_vacia = 1 if v['km_orig'] <= km_fake_fin else 2
+            
+            trc_v, aux_v, reg_v, _, _, t_horas_v = simular_tramo_termodinamico(
+                v['tipo'], v.get('doble', False), v['km_orig'], km_fake_fin, 
+                via_vacia, pct_trac, use_rm, use_pend if not is_local_move else False, 
+                None, {}, 0, 20.0 if is_local_move else None, None, estacion_anio, v.get('t_asigned', 480.0), True
+            )
+            
+            e_pant_vacio = trc_v + aux_v - reg_v
+            if active_sers:
+                distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
+                for s_name, e_val in distrib_sers.items():
+                    ser_accum_1[s_name] += e_val
+                    
+            vacio_kwh_total += e_pant_vacio
+            energy_by_fleet[v['tipo']] += e_pant_vacio
 
     t_regen_acum = 0.0
     t_reostato_acum = 0.0
@@ -501,7 +504,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             if ci < len(cols_svc_ac):
                 cols_svc_ac[ci].markdown(html_card, unsafe_allow_html=True)
             ci += 1
-        
+            
         st.markdown("##### ⚡ Consumo Energético Acumulado por Tipo de Tren (Neto Pantógrafo)")
         e_cols = st.columns(3)
         for i, f_type in enumerate(['XT-100', 'XT-M', 'SFE']):
@@ -561,121 +564,158 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         st.markdown(html_seat, unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    a1,a2,a3,a4,a5,a6 = st.columns(6)
-    with a1: st.metric("📋 Iniciados", n_inic)
-    with a2: st.metric("✅ Completados", n_comp)
-    with a3: st.metric("📏 Tren-km", f"{km_ac:,.0f}")
-    with a4: st.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}")
-    
-    if pax_dia_total > 0:
-        pax_ac = int(df_inic['pax_abordo'].sum()) if not df_inic.empty else 0
-    else:
-        if not df_inic.empty:
-            df_inic_pax = df_inic[df_inic['pax_row_idx'] != -1].drop_duplicates(subset=['pax_row_idx'])
-            pax_ac = int(df_inic_pax['pax_abordo'].sum())
+        a1,a2,a3,a4,a5,a6 = st.columns(6)
+        with a1: st.metric("📋 Iniciados", n_inic)
+        with a2: st.metric("✅ Completados", n_comp)
+        with a3: st.metric("📏 Tren-km", f"{km_ac:,.0f}")
+        with a4: st.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}")
+
+        if prefix_key == "plan":
+            pax_ac = int(df_inic['pax_abordo'].sum()) if not df_inic.empty else 0
         else:
-            pax_ac = 0
-        
-    with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_ac:,}")
-    with a6: st.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
+            if not df_inic.empty:
+                df_inic_pax = df_inic[df_inic['pax_row_idx'] != -1].drop_duplicates(subset=['pax_row_idx'])
+                pax_ac = int(df_inic_pax['pax_abordo'].sum())
+            else:
+                pax_ac = 0
 
-    st.divider()
-    st.markdown("#### 🚉 Maniobras en Vacío (Cochera El Belloto y Transiciones)")
-    st.caption("Consumo físico por tránsitos no comerciales.")
-    v1, v2, v3 = st.columns(3)
-    v1.metric("Maniobras en Vacío (Carrusel)", vacio_count)
-    v2.metric("Kilometraje Improductivo", f"{vacio_km_total:,.1f} Tren-km")
-    v3.metric("Consumo Eléctrico Vacío", f"{vacio_kwh_total:,.0f} kWh")
+        with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_ac:,}")
+        with a6: st.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
 
-    st.divider()
-    st.subheader("📈 Consumo Total y Requerimientos Aguas Arriba (SER & SEAT)")
+        if prefix_key == "mapa":
+            st.divider()
+            st.markdown("#### 🚉 Maniobras en Vacío (Cochera El Belloto y Transiciones)")
+            st.caption("Consumo físico por tránsitos no comerciales. Incluye el carrusel a Velocidad de Consigna y restricción a 20 km/h en patios. *La energía ya está sumada a la demanda total de las SERs.*")
+            v1, v2, v3 = st.columns(3)
+            v1.metric("Maniobras en Vacío (Carrusel)", vacio_count)
+            v2.metric("Kilometraje Improductivo", f"{vacio_km_total:,.1f} Tren-km")
+            v3.metric("Consumo Eléctrico Vacío", f"{vacio_kwh_total:,.0f} kWh")
 
-    if not df_dia.empty:
-        with st.expander("📊 Resumen de Energía del Día y Comportamiento de Subestaciones", expanded=True):
-            st.markdown("### 🚄 Auditoría de Consumo Operativo")
-            st.caption("Análisis termodinámico detallado. Evalúa el costo energético directo separando el impacto de la tecnología (Flota) y la geografía (Trayecto).")
-            
-            if not df_dia_e.empty:
-                def agrupar_energia(df_group):
-                    res = df_group.agg(
-                        viajes=('_id', 'count'),
-                        trac_kwh=('kwh_viaje_trac', 'sum'),
-                        regen_kwh=('kwh_viaje_regen', 'sum'),
-                        neto_kwh=('kwh_viaje_neto', 'sum')
-                    ).reset_index()
-                    res['neto_prom'] = res['neto_kwh'] / res['viajes']
-                    return res
-                
-                res_flota = agrupar_energia(df_dia_e.groupby('tipo_tren'))
-                res_flota.rename(columns={'tipo_tren': 'Flota', 'viajes': 'N° Viajes', 'trac_kwh': 'Tracción [kWh]', 'regen_kwh': 'Regen. [kWh]', 'neto_kwh': 'Neto Total [kWh]', 'neto_prom': 'Promedio [kWh/viaje]'}, inplace=True)
-                for col in ['Tracción [kWh]', 'Regen. [kWh]', 'Neto Total [kWh]', 'Promedio [kWh/viaje]']: 
-                    res_flota[col] = res_flota[col].round(0).astype(int)
-                
-                pivot_data = []
-                for (via, svc), group in df_dia_e.groupby(['Via', 'svc_type']):
-                    row = {
-                        'Vía': "V1" if via == 1 else "V2",
-                        'Trayecto': svc,
-                        'Total Viajes': len(group),
-                        'Total Neto [kWh]': int(round(group['kwh_viaje_neto'].sum()))
-                    }
+        st.divider()
+        st.subheader("📈 Consumo Total y Requerimientos Aguas Arriba (SER & SEAT)")
+
+        if not df_dia.empty:
+            with st.expander("📊 Resumen de Energía del Día y Comportamiento de Subestaciones", expanded=True):
+
+                st.markdown("### 🚄 Auditoría de Consumo Operativo")
+                st.caption("Análisis termodinámico detallado. Evalúa el costo energético directo separando el impacto de la tecnología (Flota) y la geografía (Trayecto).")
+
+                if not df_dia_e.empty:
+                    def agrupar_energia(df_group):
+                        res = df_group.agg(
+                            viajes=('_id', 'count'),
+                            trac_kwh=('kwh_viaje_trac', 'sum'),
+                            regen_kwh=('kwh_viaje_regen', 'sum'),
+                            neto_kwh=('kwh_viaje_neto', 'sum')
+                        ).reset_index()
+                        res['neto_prom'] = res['neto_kwh'] / res['viajes']
+                        return res
+
+                    res_flota = agrupar_energia(df_dia_e.groupby('tipo_tren'))
+                    res_flota.rename(columns={'tipo_tren': 'Flota', 'viajes': 'N° Viajes', 'trac_kwh': 'Tracción [kWh]', 'regen_kwh': 'Regen. [kWh]', 'neto_kwh': 'Neto Total [kWh]', 'neto_prom': 'Promedio [kWh/viaje]'}, inplace=True)
+                    for col in ['Tracción [kWh]', 'Regen. [kWh]', 'Neto Total [kWh]', 'Promedio [kWh/viaje]']: 
+                        res_flota[col] = res_flota[col].round(0).astype(int)
+
+                    pivot_data = []
+                    for (via, svc), group in df_dia_e.groupby(['Via', 'svc_type']):
+                        row = {
+                            'Vía': "V1" if via == 1 else "V2",
+                            'Trayecto': svc,
+                            'Total Viajes': len(group),
+                            'Total Neto [kWh]': int(round(group['kwh_viaje_neto'].sum()))
+                        }
+
+                        for flota in ['XT-100', 'XT-M', 'SFE']:
+                            sub = group[group['tipo_tren'] == flota]
+                            n_v = len(sub)
+                            row[f'N° {flota}'] = n_v
+                            if n_v > 0:
+                                tot_f = sub['kwh_viaje_neto'].sum()
+                                tot_km = sub['tren_km'].sum()
+                                row[f'Neto {flota} [kWh]'] = int(round(tot_f))
+                                row[f'Prom. {flota} [kWh/v]'] = int(round(tot_f / n_v))
+                                row[f'IDE {flota} [kWh/km]'] = round(tot_f / tot_km, 2) if tot_km > 0 else 0.0
+                            else:
+                                row[f'Neto {flota} [kWh]'] = 0
+                                row[f'Prom. {flota} [kWh/v]'] = 0
+                                row[f'IDE {flota} [kWh/km]'] = 0.0
+
+                        pivot_data.append(row)
+
+                    df_pivot = pd.DataFrame(pivot_data)
+
+                    st.markdown("##### 🚆 Resumen Consolidado por Familia de Tren (Flota)")
+                    st.dataframe(res_flota, use_container_width=True)
+
+                    st.markdown("##### 🔀 Matriz Detallada: Trayectos vs Flota (Auditoría Ejecutiva con IDE Pantógrafo)")
+                    st.caption("Desglose exacto de cuántos trenes de cada familia operaron un trayecto específico, su consumo total en esa ruta, el promedio unitario y su eficiencia kilométrica.")
+                    st.dataframe(df_pivot, use_container_width=True)
+                    
+                    # --- NUEVO: GRÁFICO COMPARATIVO DE IDE POR SERVICIO Y TREN ---
+                    st.markdown("##### 📊 Comparativa Visual de Eficiencia (IDE Pantógrafo)")
+                    st.caption("Métrica pura del tren: Energía consumida por kilómetro recorrido. A menor barra, mayor eficiencia para esa ruta.")
+                    
+                    fig_ide = go.Figure()
+                    colores_flota = {'XT-100': '#1565C0', 'XT-M': '#F9A825', 'SFE': '#C62828'}
                     
                     for flota in ['XT-100', 'XT-M', 'SFE']:
-                        sub = group[group['tipo_tren'] == flota]
-                        n_v = len(sub)
-                        row[f'N° {flota}'] = n_v
-                        if n_v > 0:
-                            tot_f = sub['kwh_viaje_neto'].sum()
-                            tot_km = sub['tren_km'].sum()
-                            row[f'Neto {flota} [kWh]'] = int(round(tot_f))
-                            row[f'Prom. {flota} [kWh/v]'] = int(round(tot_f / n_v))
-                            row[f'IDE {flota} [kWh/km]'] = round(tot_f / tot_km, 2) if tot_km > 0 else 0.0
-                        else:
-                            row[f'Neto {flota} [kWh]'] = 0
-                            row[f'Prom. {flota} [kWh/v]'] = 0
-                            row[f'IDE {flota} [kWh/km]'] = 0.0
-                
-                    pivot_data.append(row)
-                
-                df_pivot = pd.DataFrame(pivot_data)
+                        ide_col = f'IDE {flota} [kWh/km]'
+                        # Solo plotear si hubo viajes (IDE > 0)
+                        mask = df_pivot[ide_col] > 0
+                        if mask.any():
+                            fig_ide.add_trace(go.Bar(
+                                x=df_pivot.loc[mask, 'Trayecto'] + " (V" + df_pivot.loc[mask, 'Vía'].str[-1] + ")",
+                                y=df_pivot.loc[mask, ide_col],
+                                name=flota,
+                                marker_color=colores_flota[flota],
+                                text=df_pivot.loc[mask, ide_col].apply(lambda x: f"{x:.2f}"),
+                                textposition='auto'
+                            ))
+                            
+                    fig_ide.update_layout(
+                        title="Rendimiento Kilométrico por Servicio Operativo",
+                        xaxis_title="Trayecto de Servicio",
+                        yaxis_title="IDE [kWh/km] (Pantógrafo)",
+                        barmode='group',
+                        plot_bgcolor='white',
+                        legend_title="Tipo de Flota",
+                        height=450
+                    )
+                    st.plotly_chart(fig_ide, use_container_width=True)
+                    # -------------------------------------------------------------
 
-                st.markdown("##### 🚆 Resumen Consolidado por Familia de Tren (Flota)")
-                st.dataframe(res_flota, use_container_width=True)
+                st.divider()
+                st.markdown("### Requerimientos Aguas Arriba (SER & SEAT)")
+                sr1, sr2 = st.columns(2)
+                with sr1:
+                    st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh** \n*Considera el despacho geográfico de energía y caída de tensión dinámica a 3000 Vcc.*")
+                with sr2:
+                    st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh** \n*Considera pérdidas dinámicas de transmisión AC 44kV (I²R) integradas y eficiencia del transformador de potencia (99%).*")
 
-                st.markdown("##### 🔀 Matriz Detallada: Trayectos vs Flota (Auditoría Ejecutiva con IDE)")
-                st.caption("Desglose exacto de cuántos trenes de cada familia operaron un trayecto específico, su consumo total en esa ruta, el promedio unitario y su eficiencia kilométrica (IDE).")
-                st.dataframe(df_pivot, use_container_width=True)
+                fig_pie = go.Figure(data=[go.Pie(
+                    labels=['Tracción', 'Auxiliar', 'Regeneración Útil', 'Pérdida Reóstato'], 
+                    values=[t_trac, t_aux, t_regen, t_reostat], 
+                    hole=.3,
+                    marker_colors=['#1565C0', '#F9A825', '#2E7D32', '#C62828']
+                )])
+                fig_pie.update_layout(title="Distribución de Energía (Trenes + Vacíos)")
 
-            st.divider()
-            st.markdown("### Requerimientos Aguas Arriba (SER & SEAT)")
-            sr1, sr2 = st.columns(2)
-            with sr1:
-                st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh** \n*Considera el despacho geográfico de energía y caída de tensión dinámica a 3000 Vcc.*")
-            with sr2:
-                st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh** \n*Considera pérdidas dinámicas de transmisión AC 44kV (I²R) integradas y eficiencia del transformador de potencia (99%).*")
+                df_dia_e['hora'] = (df_dia_e['t_ini'] // 60).astype(int)
+                e_hora_comercial = df_dia_e.groupby('hora')[['kwh_viaje_trac', 'kwh_viaje_aux', 'kwh_viaje_regen', 'kwh_viaje_neto']].sum().reset_index()
 
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=['Tracción', 'Auxiliar', 'Regeneración Útil', 'Pérdida Reóstato'], 
-                values=[t_trac, t_aux, t_regen, t_reostato], 
-                hole=.3,
-                marker_colors=['#1565C0', '#F9A825', '#2E7D32', '#C62828']
-            )])
-            fig_pie.update_layout(title="Distribución de Energía (Trenes + Vacíos)")
+                e_hora = e_hora_comercial
 
-            df_dia_e['hora'] = (df_dia_e['t_ini'] // 60).astype(int)
-            e_hora = df_dia_e.groupby('hora')[['kwh_viaje_trac', 'kwh_viaje_aux', 'kwh_viaje_regen', 'kwh_viaje_neto']].sum().reset_index()
+                fig_hora = go.Figure()
+                fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=e_hora['kwh_viaje_trac'], name='Tracción', marker_color='#1565C0'))
+                fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=e_hora['kwh_viaje_aux'], name='Auxiliar', marker_color='#F9A825'))
+                fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=-e_hora['kwh_viaje_regen'], name='Regeneración Útil', marker_color='#2E7D32'))
+                fig_hora.add_trace(go.Scatter(x=e_hora['hora'], y=e_hora['kwh_viaje_neto'] / ETA_SER_RECTIFICADOR, mode='lines', name='Demanda Est. SER', line=dict(color='red', width=2, dash='dot')))
+                fig_hora.update_layout(barmode='relative', title="Energía por Hora con Demanda SER", xaxis_title="Hora", yaxis_title="kWh")
 
-            fig_hora = go.Figure()
-            fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=e_hora['kwh_viaje_trac'], name='Tracción', marker_color='#1565C0'))
-            fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=e_hora['kwh_viaje_aux'], name='Auxiliar', marker_color='#F9A825'))
-            fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=-e_hora['kwh_viaje_regen'], name='Regeneración Útil', marker_color='#2E7D32'))
-            fig_hora.add_trace(go.Scatter(x=e_hora['hora'], y=e_hora['kwh_viaje_neto'] / ETA_SER_RECTIFICADOR, mode='lines', name='Demanda Est. SER', line=dict(color='red', width=2, dash='dot')))
-            fig_hora.update_layout(barmode='relative', title="Energía por Hora con Demanda SER", xaxis_title="Hora", yaxis_title="kWh")
+                ec1, ec2 = st.columns(2)
+                with ec1: st.plotly_chart(fig_pie, use_container_width=True)
+                with ec2: st.plotly_chart(fig_hora, use_container_width=True)
 
-            ec1, ec2 = st.columns(2)
-            with ec1: st.plotly_chart(fig_pie, use_container_width=True)
-            with ec2: st.plotly_chart(fig_hora, use_container_width=True)
-
-    if st.session_state[f'play_{prefix_key}']:
-        time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
-        st.rerun()
+        if st.session_state[f'play_{prefix_key}']:
+            time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
+            st.rerun()
