@@ -1,4 +1,3 @@
-# config.py
 from datetime import datetime, date, timedelta
 
 ESTACIONES = [
@@ -15,7 +14,7 @@ PAX_IDX  = {c: i for i, c in enumerate(PAX_COLS)}
 
 KM_TRAMO = [0.7,0.7,0.8,1.7,2.1,1.4,0.9,0.9,1.0,1.5,7.4,2.3,1.9,2.0,1.1,1.2,0.9,0.6,1.3,12.73]
 KM_ACUM  = [0.0]
-for _k in KM_TRAMO: KM_ACUM.append(round(KM_ACUM[-1]+_k, 2))
+for k in KM_TRAMO: KM_ACUM.append(round(KM_ACUM[-1]+k, 2))
 KM_TOTAL = KM_ACUM[-1]
 N_EST    = len(ESTACIONES)
 
@@ -173,8 +172,8 @@ feriados_2026 = [
     '2026-10-12', '2026-10-31', '2026-12-08', '2026-12-25'
 ]
 
-def clasificar_dia(d):
-    str_d = d.strftime('%Y-%m-%d')
-    if str_d in feriados_2026 or d.weekday() == 6: return 'Domingo/Festivo'
-    if d.weekday() == 5: return 'Sábado'
-    return 'Laboral'
+MES_A_ESTACION = {
+    "Enero":"verano","Febrero":"verano","Marzo":"otoño","Abril":"otoño",
+    "Mayo":"otoño","Junio":"invierno","Julio":"invierno","Agosto":"invierno",
+    "Septiembre":"primavera","Octubre":"primavera","Noviembre":"primavera","Diciembre":"verano"
+}
