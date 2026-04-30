@@ -187,6 +187,73 @@ def calc_tren_km_real_general(row):
         if k_s <= km_man <= k_e: return abs(km_man-k_s)*2.0 + abs(k_e-km_man)*1.0
     return abs(k_e-k_s) * (2.0 if row.get('doble',False) else 1.0)
 
+@st.cache_data(show_spinner="Calculando perfiles promedio de pasajeros por tipo de día...")
+def get_perfiles_pax(df_px):
+    if df_px.empty: return {}
+    df_p = df_px.copy()
+    
+    df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha_s'], errors='coerce')
+    df_p = df_p.dropna(subset=['Fecha_dt'])
+    
+    if df_p.empty: return {}
+    
+    df_p['Tipo_Dia'] = df_p['Fecha_s'].apply(clasificar_dia)
+    
+    for c in PAX_COLS + ['CargaMax']:
+        if c in df_p.columns:
+            df_p[c] = pd.to_numeric(df_p[c], errors='coerce').fillna(0)
+            
+    perfiles = {}
+    for t_dia in ['Laboral', 'Sábado', 'Domingo/Festivo']:
+        for via in [1, 2]:
+            sub = df_p[(df_p['Tipo_Dia'] == t_dia) & (df_p['Via'] == via)]
+            if not sub.empty:
+                promedios = sub[PAX_COLS].mean().round().astype(int).to_dict()
+                promedios['CargaMax_Promedio'] = int(sub['CargaMax'].mean().round())
+            else:
+                promedios = {c: 0 for c in PAX_COLS}
+                promedios['CargaMax_Promedio'] = 0
+            perfiles[(t_dia, via)] = promedios
+            
+    return perfiles
+
+@st.cache_data(show_spinner="Calculando Carrusel de Cocheras...")
+def get_vacios_dia(df_dia):
+    vacios = []
+    if df_dia.empty: return vacios
+    agrupador = 'motriz_num' if 'motriz_num' in df_dia.columns else 'num_servicio'
+    
+    def _get_est_name(km):
+        if pd.isna(km): return "Desconocido"
+        dists = [abs(km - k) for k in KM_ACUM]
+        idx = int(np.argmin(dists))
+        return ESTACIONES[idx] if dists[idx] <= 1.5 else f"km {km:.1f}"
+        
+    for tren, group in df_dia.sort_values('t_ini').groupby(agrupador):
+        if str(tren).strip() == '' or str(tren).strip() == 'nan': continue
+        viajes = group.to_dict('records')
+        if not viajes: continue
+        
+        p = viajes[0]
+        if abs(p.get('km_orig', 0) - KM_ACUM[14]) < 0.1:
+            vacios.append({'t_asigned': p['t_ini'] - 10, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'El Belloto', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
+        elif abs(p.get('km_orig', 0) - KM_ACUM[18]) < 0.1:
+            vacios.append({'t_asigned': p['t_ini'] - 20, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'Sargento Aldea', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
+            
+        for i in range(len(viajes) - 1):
+            actual, sig = viajes[i], viajes[i+1]
+            k_o, k_d = actual.get('km_dest', 0), sig.get('km_orig', 0)
+            dist = abs(k_o - k_d)
+            if 0.1 < dist <= 20.0:
+                vacios.append({'t_asigned': actual['t_fin'] + 5, 'tipo': actual.get('tipo_tren', 'XT-100'), 'doble': actual.get('doble', False), 'cochera': False, 'km_orig': k_o, 'km_dest': k_d, 'dist': dist, 'motriz_num': tren, 'origen_txt': _get_est_name(k_o), 'destino_txt': _get_est_name(k_d), 'servicio_previo': str(actual.get('num_servicio', '')), 'servicio_siguiente': str(sig.get('num_servicio', ''))})
+                
+        u = viajes[-1]
+        if abs(u.get('km_dest', 0) - KM_ACUM[14]) < 0.1:
+            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'El Belloto', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
+        elif abs(u.get('km_dest', 0) - KM_ACUM[18]) < 0.1:
+            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
+    return vacios
+
 def procesar_thdr(data, fname, via_param=1):
     try:
         ext = fname.lower()
