@@ -241,6 +241,9 @@ def main():
     else:
         fechas = []
 
+    # =========================================================================
+    # ESTRUCTURA DE TABS (SIEMPRE VISIBLE)
+    # =========================================================================
     tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
     
     with tab_planificador:
@@ -300,38 +303,43 @@ def main():
                     if df_temp.empty: 
                         st.error(f"Error procesando: {msg}")
                     else:
-                        st.success("✅ Planilla decodificada. Distribuye la flota por trayecto y configuración (Simple/Doble):")
-                        
-                        df_temp['Config_Str'] = df_temp['doble'].map({True: 'Doble', False: 'Simple'})
-                        agrupado = df_temp.groupby(['svc_type', 'Config_Str']).size().reset_index(name='Total Viajes')
-                        
-                        current_keys = set(zip(agrupado['svc_type'], agrupado['Config_Str']))
-                        stored_keys = set(zip(
-                            st.session_state.get('flota_map_v2', pd.DataFrame()).get('Ruta', []), 
-                            st.session_state.get('flota_map_v2', pd.DataFrame()).get('Configuración', [])
-                        ))
-                        
-                        if 'flota_map_v2' not in st.session_state or current_keys != stored_keys:
-                            matriz = []
-                            for _, r in agrupado.iterrows():
-                                matriz.append({
-                                    "Ruta": r['svc_type'],
-                                    "Configuración": r['Config_Str'],
-                                    "Total Viajes": r['Total Viajes'],
-                                    "XT-100": r['Total Viajes'],
-                                    "XT-M": 0,
-                                    "SFE": 0
-                                })
-                            st.session_state['flota_map_v2'] = pd.DataFrame(matriz)
-                        
-                        df_flota_edit = st.data_editor(st.session_state['flota_map_v2'], hide_index=True, use_container_width=True)
-                        
-                        if not df_flota_edit[df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE'] != df_flota_edit['Total Viajes']].empty: 
-                            st.warning("⚠️ Hay trayectos donde la suma asignada no coincide con el Total de Viajes. El remanente será XT-100.")
-                        
-                        st.session_state['temp_df_plan'] = df_temp
-                        st.session_state['temp_flota_edit'] = df_flota_edit
+                        # MEJORA: Expander para la Asignación Avanzada de Flota (Rolling Stock Rostering)
+                        with st.expander("🛠️ Asignación Avanzada de Flota (Rolling Stock Rostering)", expanded=False):
+                            st.success("✅ Planilla decodificada. Distribuye la flota por trayecto y configuración (Simple/Doble):")
+                            
+                            df_temp['Config_Str'] = df_temp['doble'].map({True: 'Doble', False: 'Simple'})
+                            agrupado = df_temp.groupby(['svc_type', 'Config_Str']).size().reset_index(name='Total Viajes')
+                            
+                            current_keys = set(zip(agrupado['svc_type'], agrupado['Config_Str']))
+                            stored_keys = set(zip(
+                                st.session_state.get('flota_map_v2', pd.DataFrame()).get('Ruta', []), 
+                                st.session_state.get('flota_map_v2', pd.DataFrame()).get('Configuración', [])
+                            ))
+                            
+                            if 'flota_map_v2' not in st.session_state or current_keys != stored_keys:
+                                matriz = []
+                                for _, r in agrupado.iterrows():
+                                    matriz.append({
+                                        "Ruta": r['svc_type'],
+                                        "Configuración": r['Config_Str'],
+                                        "Total Viajes": r['Total Viajes'],
+                                        "XT-100": r['Total Viajes'],
+                                        "XT-M": 0,
+                                        "SFE": 0
+                                    })
+                                st.session_state['flota_map_v2'] = pd.DataFrame(matriz)
+                            
+                            df_flota_edit = st.data_editor(st.session_state['flota_map_v2'], hide_index=True, use_container_width=True)
+                            
+                            if not df_flota_edit[df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE'] != df_flota_edit['Total Viajes']].empty: 
+                                st.warning("⚠️ Hay trayectos donde la suma asignada no coincide con el Total de Viajes. El remanente será XT-100.")
+                            
+                            st.session_state['temp_df_plan'] = df_temp
+                            st.session_state['temp_flota_edit'] = df_flota_edit
             
+        # =====================================================================
+        # EJECUCIÓN DESACOPLADA (Botón guarda en memoria RAM el cálculo)
+        # =====================================================================
         if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_full"):
             with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                 if modo_plan == "Matriz Sintética":
@@ -381,10 +389,12 @@ def main():
 
                 df_sint_final, df_sint_e = procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen, pax_promedio_viaje)
                 
+                # Guardamos en Memoria (Session State)
                 st.session_state['plan_ready'] = True
                 st.session_state['plan_sint_final'] = df_sint_final
                 st.session_state['plan_sint_e'] = df_sint_e
 
+        # RENDERIZADO CONTINUO (Fuera del botón)
         if st.session_state.get('plan_ready', False):
             st.divider()
             st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
@@ -393,6 +403,81 @@ def main():
             df_e_mem = st.session_state['plan_sint_e']
             
             render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
+
+            # =========================================================================
+            # NUEVO: GENERACIÓN DE THDR TEÓRICA (ITINERARIO CINEMÁTICO)
+            # =========================================================================
+            st.markdown("### 📄 Itinerario y Programación Operativa")
+            with st.expander("Ver Tabla de Horarios de Recorrido (THDR Teórica Generada)", expanded=False):
+                st.caption("Esta tabla representa el Itinerario Cinemático: Tiempos reales de llegada y salida calculados por el motor físico considerando la masa del tren (Flota + Pax), % de tracción, pendientes y 25 segundos de detención en cada estación intermedia.")
+                
+                thdr_data = []
+                for idx, row in df_final_mem.iterrows():
+                    via = row['Via']
+                    t_ini = row['t_ini']
+                    t_fin = row['t_fin']
+                    
+                    idx_o = int(np.argmin([abs(row['km_orig'] - k) for k in KM_ACUM]))
+                    idx_d = int(np.argmin([abs(row['km_dest'] - k) for k in KM_ACUM]))
+                    
+                    est_idxs = range(idx_o, idx_d + 1) if via == 1 else range(idx_o, idx_d - 1, -1)
+                    n_paradas_intermedias = max(0, len(est_idxs) - 2)
+                    
+                    # El motor físico usa 25.0 segundos como dwell en paradas intermedias
+                    dwell_mins = 25.0 / 60.0
+                    total_dwell = n_paradas_intermedias * dwell_mins
+                    
+                    # Tiempo efectivo moviéndose en la vía
+                    total_movimiento = max(0.1, (t_fin - t_ini) - total_dwell)
+                    dist_total = abs(row['km_dest'] - row['km_orig'])
+                    
+                    record = {
+                        'Servicio': row['num_servicio'],
+                        'Vía': f"V{via}",
+                        'Flota': row['tipo_tren'],
+                        'Config.': 'Doble' if row['doble'] else 'Simple',
+                        'Origen': ESTACIONES[idx_o],
+                        'Destino': ESTACIONES[idx_d],
+                    }
+                    
+                    # Inicializar todas las estaciones vacías (para mantener la matriz cuadrada)
+                    for st_name in ESTACIONES:
+                        record[st_name] = '--:--:--'
+                        
+                    paradas_hasta_ahora = 0
+                    for i, e_idx in enumerate(est_idxs):
+                        k_actual = KM_ACUM[e_idx]
+                        dist_recorrida = abs(k_actual - row['km_orig'])
+                        
+                        # Aproximación cinemática: tiempo distribuido por distancia
+                        t_mov_parcial = total_movimiento * (dist_recorrida / dist_total) if dist_total > 0 else 0
+                        
+                        # Hora en que el tren llega y se detiene (abre puertas)
+                        t_llegada = t_ini + t_mov_parcial + (paradas_hasta_ahora * dwell_mins)
+                        
+                        # Hora en que el tren sale (cierra puertas). 
+                        # Si no es la última estación, se queda 25 segundos (dwell_mins)
+                        if i > 0 and i < len(est_idxs) - 1:
+                            t_salida = t_llegada + dwell_mins
+                            paradas_hasta_ahora += 1
+                        else:
+                            t_salida = t_llegada
+                            
+                        # Grabamos la hora de salida para la tabla THDR (Estándar Operativo)
+                        record[ESTACIONES[e_idx]] = mins_to_time_str(t_salida)
+                        
+                    thdr_data.append(record)
+                    
+                df_thdr_teorica = pd.DataFrame(thdr_data)
+                st.dataframe(df_thdr_teorica, use_container_width=True)
+                
+                csv_thdr = df_thdr_teorica.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descargar THDR Teórica Físicamente Validada (CSV)",
+                    data=csv_thdr,
+                    file_name=f'THDR_Teorica_V118.csv',
+                    mime='text/csv'
+                )
 
     with tab_mapa:
         if df_all.empty:
