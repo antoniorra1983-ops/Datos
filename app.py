@@ -5,7 +5,7 @@ import numpy as np
 from config import *
 from etl_parser import (
     procesar_thdr, calcular_dwell, cargar_pax, match_pax, 
-    get_vacios_dia, get_perfiles_pax, parsear_planilla_maestra, 
+    get_perfiles_pax, parsear_planilla_maestra, 
     calc_tren_km_real_general, clean_id, mins_to_time_str
 )
 from motor_fisico import calcular_termodinamica_flota_v111, calcular_receptividad_por_headway, precalcular_red_electrica_v111, simular_tramo_termodinamico
