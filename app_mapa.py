@@ -9,6 +9,7 @@ import re
 import time
 import unicodedata
 from io import BytesIO
+from config import *
 from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 
