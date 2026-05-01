@@ -156,8 +156,8 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 
     svg += '</svg>'
     
-    # Minificación para asegurar renderizado intacto
-    return svg.replace('\n', '')
+    # Minificación y Retorno de Altura dinámica (Firma Corregida)
+    return svg.replace('\n', ''), H
 
 # =============================================================================
 # TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
@@ -203,9 +203,12 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     # el dato directamente a su st.session_state[key].
     # -------------------------------------------------------------------------
     slider_key = f"sl_ui_{prefix_key}"
+    time_key = f"t_math_{prefix_key}"
     
     if slider_key not in st.session_state: 
         st.session_state[slider_key] = 480.0
+    if time_key not in st.session_state: 
+        st.session_state[time_key] = 480.0
     if f'play_{prefix_key}' not in st.session_state: 
         st.session_state[f'play_{prefix_key}'] = False
         
@@ -219,27 +222,35 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     # Lógica Matemática que empuja el Slider directamente en memoria (sin intermediarios)
     if st.session_state[f'play_{prefix_key}']:
         speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        new_val = st.session_state[slider_key] + (0.5 * speed) # Pasos más amplios (fluidez visual)
+        new_val = st.session_state[time_key] + (0.5 * speed) # Pasos más amplios (fluidez visual)
         if new_val >= 1439.0:
-            st.session_state[slider_key] = 1439.0
+            st.session_state[time_key] = 1439.0
             st.session_state[f'play_{prefix_key}'] = False
         else:
-            st.session_state[slider_key] = new_val
+            st.session_state[time_key] = new_val
 
     c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
-    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
-    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
+    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
+    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 1.0)
     
     if modo == "▶️ Animado":
         if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
             st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
             st.rerun() # Inicia/Pausa el bucle
             
-    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
-    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
+    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
+    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
 
-    # El Slider obedecerá a st.session_state[slider_key] automáticamente
-    hora_m1 = st.slider("Timeline", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
+    # El Slider se actualiza a sí mismo (callback inverso) para sincronizar interacciones manuales
+    def sync_time():
+        st.session_state[time_key] = st.session_state[slider_key]
+
+    st.slider("Timeline", min_value=0.0, max_value=1439.0, 
+              value=float(st.session_state[time_key]), 
+              step=0.1, key=slider_key, on_change=sync_time)
+
+    # Forzar la hora maestra a la variable de cálculo
+    hora_m1 = st.session_state[time_key]
     hora_s1 = mins_to_time_str(hora_m1)
 
     if modo == "▶️ Animado":
