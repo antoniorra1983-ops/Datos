@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import time
@@ -16,19 +17,17 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
-    # Coordenadas Corregidas (SVG Y-Axis: 0 es el techo, H es el suelo)
-    Y_44KV = 80
-    Y_SER = 130
-    Y_V2 = 180
+    # Coordenadas Corregidas Definitivas (SVG Y-Axis: 0 es el techo, H es el suelo)
+    Y_44KV = 60
+    Y_SER = 110
+    Y_V2 = 160
     Y_V1 = Y_V2 + gap_vias
-    y_min = 0
-    y_max = Y_V1 + 90
-    H = y_max
+    H = Y_V1 + 90
     y_mid = (Y_V1 + Y_V2) / 2
 
     svg = f'''
-    <svg width="100%" height="{H}" viewBox="0 {y_min} {W} {H}" xmlns="http://www.w3.org/2000/svg" style="background-color: white; font-family: sans-serif; border-radius: 8px; border: 1px solid #ddd; display: block; margin-bottom: 20px;">
-        <text x="{W/2}" y="30" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
+    <svg width="100%" height="{H}" viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="background-color: white; font-family: sans-serif; border-radius: 8px; border: 1px solid #ddd; display: block; margin-bottom: 5px;">
+        <text x="{W/2}" y="25" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
         
         <!-- Pistas Físicas -->
         <line x1="0" y1="{Y_V2}" x2="{W}" y2="{Y_V2}" stroke="#c62828" stroke-width="5" />
@@ -126,7 +125,7 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
             sep_r = row.get('sep_next', '—')
             sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
 
-            # Lógica de evasión de colisiones visuales (Top/Bottom logic corrected for SVG Y-Down)
+            # Lógica Anti-Colisiones de etiquetas adaptada a SVG
             side = label_side.get(idx, 'up')
             if via == 2:
                 base_dy = -r_c - 16
@@ -135,7 +134,8 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
                 base_dy = r_c + 16
                 if side == 'down': base_dy += 28
 
-            safe_tooltip = str(row.get("tooltip", "")).replace("<br>", "&#10;").replace("<b>", "").replace("</b>", "")
+            # Sanitización de tooltips para SVG <title>
+            safe_tooltip = str(row.get("tooltip", "")).replace("\n", "&#10;").replace("<b>", "").replace("</b>", "")
             
             # Dibujar Tren (Círculo interactivo)
             svg += f'<circle cx="{xp}" cy="{y_ln}" r="{r_c}" fill="{color}" stroke="black" stroke-width="2"><title>{safe_tooltip}</title></circle>'
@@ -156,8 +156,7 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 
     svg += '</svg>'
     
-    # MUY IMPORTANTE: Se minifica el string (quita saltos de línea) para que Streamlit Markdown no lo rompa
-    return svg.replace('\n', '')
+    return svg, H
 
 # =============================================================================
 # TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
@@ -198,7 +197,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
     
     # -------------------------------------------------------------------------
-    # DESACOPLE DE ESTADO: Solución para el "Deadlock" de Streamlit
+    # DESACOPLE DE ESTADO: Solución Definitiva al "Deadlock" de Streamlit
     # -------------------------------------------------------------------------
     time_key = f"t_math_{prefix_key}"
     if time_key not in st.session_state: 
@@ -213,11 +212,12 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if modo != "▶️ Animado": 
         st.session_state[f'play_{prefix_key}'] = False
 
-    # Lógica Matemática que empuja el reloj (Forzada por el Script)
+    # Lógica Matemática que empuja el reloj desde las sombras
     if st.session_state[f'play_{prefix_key}']:
         speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        st.session_state[time_key] = min(1439.0, st.session_state[time_key] + (0.2 * speed))
+        st.session_state[time_key] += (0.5 * speed) # Avance más notorio para fluidez
         if st.session_state[time_key] >= 1439.0:
+            st.session_state[time_key] = 1439.0
             st.session_state[f'play_{prefix_key}'] = False
 
     c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
@@ -230,14 +230,15 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
     if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
 
-    # El Slider ya no gobierna el bucle. Ahora el Slider simplemente OBEDECE a `time_key`
-    # Si el usuario lo arrastra manualmente (cuando está en Pausa), capturamos su valor de retorno.
-    user_val = st.slider("Timeline", min_value=0.0, max_value=1439.0, value=float(st.session_state[time_key]), step=0.1)
-    
-    # Sincronización Inversa: Solo si no está reproduciéndose, guardamos el arrastre del usuario
-    if not st.session_state[f'play_{prefix_key}']:
-        st.session_state[time_key] = user_val
+    # El Slider se actualiza a sí mismo (callback inverso) para sincronizar interacciones manuales
+    def sync_time():
+        st.session_state[time_key] = st.session_state[f"sl_{prefix_key}"]
 
+    st.slider("Timeline", min_value=0.0, max_value=1439.0, 
+              value=float(st.session_state[time_key]), 
+              step=0.1, key=f"sl_{prefix_key}", on_change=sync_time)
+
+    # Forzar la hora maestra a la variable de cálculo
     hora_m1 = st.session_state[time_key]
     hora_s1 = mins_to_time_str(hora_m1)
 
@@ -452,8 +453,9 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    # INYECCIÓN FINAL DE SVG (YA NO HAY SALTO DE LÍNEA. ORIENTACIÓN TOPOGRÁFICA CORREGIDA)
-    st.markdown(draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias), unsafe_allow_html=True)
+    # INYECCIÓN FINAL DE SVG (VÍA ST.COMPONENTS PROTEGIDO)
+    svg_html, height_px = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias)
+    components.html(svg_html, height=height_px + 10)
 
     st.divider()
     n_circ = len(df_act) if not df_act.empty else 0
@@ -601,7 +603,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             ser_cols = st.columns(len(active_sers))
             for i, ser_info in enumerate(active_sers):
                 s_name = ser_info[1]
-                e_ser_panto = ser_accum_1.get(s_name, 0.0)
+                e_ser_panto = ser_accum_visual.get(s_name, 0.0)
                 e_ser_44 = max(0.0, e_ser_panto) / ETA_SER_RECTIFICADOR
                 ide_ser = e_ser_44 / max(1.0, km_total_red)
                 html_ser = f"""
@@ -749,5 +751,5 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 with ec2: st.plotly_chart(fig_hora, use_container_width=True)
 
         if st.session_state[f'play_{prefix_key}']:
-            time.sleep(max(0.02, 0.2 / speed))
+            time.sleep(max(0.01, 0.1 / speed))
             st.rerun()
