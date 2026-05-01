@@ -572,7 +572,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             ser_cols = st.columns(len(active_sers))
             for i, ser_info in enumerate(active_sers):
                 s_name = ser_info[1]
-                e_ser_panto = ser_accum_1.get(s_name, 0.0)
+                e_ser_panto = ser_accum_visual.get(s_name, 0.0)
                 e_ser_44 = max(0.0, e_ser_panto) / ETA_SER_RECTIFICADOR
                 ide_ser = e_ser_44 / max(1.0, km_total_red)
                 html_ser = f"""
@@ -621,6 +621,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         if prefix_key == "mapa":
             st.divider()
             st.markdown("#### 🚉 Maniobras en Vacío (Cochera El Belloto y Transiciones)")
+            st.caption("Consumo físico por tránsitos no comerciales. Incluye el carrusel a Velocidad de Consigna y restricción a 20 km/h en patios. *La energía ya está sumada a la demanda total de las SERs.*")
             v1, v2, v3 = st.columns(3)
             v1.metric("Maniobras en Vacío (Carrusel)", vacio_count)
             v2.metric("Kilometraje Improductivo", f"{vacio_km_total:,.1f} Tren-km")
@@ -633,6 +634,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             with st.expander("📊 Resumen de Energía del Día y Comportamiento de Subestaciones", expanded=True):
 
                 st.markdown("### 🚄 Auditoría de Consumo Operativo")
+                st.caption("Análisis termodinámico detallado. Evalúa el costo energético directo separando el impacto de la tecnología (Flota) y la geografía (Trayecto).")
+
                 if not df_dia_e.empty:
                     def agrupar_energia(df_group):
                         res = df_group.agg(
@@ -681,6 +684,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                     st.dataframe(res_flota, use_container_width=True)
 
                     st.markdown("##### 🔀 Matriz Detallada: Trayectos vs Flota (Auditoría Ejecutiva con IDE)")
+                    st.caption("Desglose exacto de cuántos trenes de cada familia operaron un trayecto específico, su consumo total en esa ruta, el promedio unitario y su eficiencia kilométrica (IDE).")
                     st.dataframe(df_pivot, use_container_width=True)
 
                 st.divider()
