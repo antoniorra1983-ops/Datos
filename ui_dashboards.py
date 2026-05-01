@@ -158,7 +158,7 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titulo_extra, active_sers_list, gap_vias, use_rm):
     """
     Empaqueta el perfil matemático y genera el Iframe HTML.
-    JS lee el JSON e interpola las posiciones, tooltips y *pasajeros dinámicos* a 60 FPS.
+    JS lee el JSON e interpola las posiciones, tooltips y pasajeros dinámicos a 60 FPS.
     """
     trips_data = []
     
@@ -276,7 +276,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             let lbl = tr.tipo === 'SFE' ? 'SFE' : (tr.tipo === 'XT-M' ? 'Modular' : 'XT-100');
             if (tr.motriz) lbl += ' [' + tr.motriz + ']';
             
-            // INYECCIÓN DE POPUP (TOOLTIP) NATIVO SVG
             let safe_tooltip = `Tren: ${lbl} (Serv. ${tr.svc})&#10;Vía ${tr.Via} | km ${km.toFixed(2)}&#10;Pasajeros a Bordo: ${current_pax} pax&#10;Energía Neta: ${Math.round(current_kwh)} kWh`;
             
             html += `<circle cx="${xp}" cy="${y_ln}" r="${r_c}" fill="${color}" stroke="black" stroke-width="2"><title>${safe_tooltip}</title></circle>`;
@@ -372,6 +371,34 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
     </html>
     """
     return html_template, H
+
+# =============================================================================
+# TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
+# =============================================================================
+def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
+    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
+    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
+    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
+    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
+    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
+    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
+    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
+    regen_bruta = t_regen + t_reostat
+    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
+    ide_global  = t_neto/max(0.1, tren_km_t)
+    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
+    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
+
+    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
+    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
+    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
+    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
+    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
+    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
+    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
+    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
+    st.divider()
 
 # =============================================================================
 # ORQUESTADOR CENTRAL: GEMELO DIGITAL
