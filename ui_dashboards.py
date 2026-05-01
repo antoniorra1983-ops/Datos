@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import time
+import json
 import plotly.graph_objects as go
 from config import *
 from etl_parser import mins_to_time_str, get_vacios_dia, get_pax_at_km
@@ -10,15 +11,15 @@ from red_electrica import calcular_flujo_ac_nodo, distribuir_potencia_sers_kw, d
 from motor_fisico import km_at_t, vel_at_km, get_train_state_and_speed, calcular_aux_dinamico, simular_tramo_termodinamico
 
 # =============================================================================
-# MOTOR VISUAL 60 FPS (INYECCIÓN DOM - SVG TOPOGRÁFICO)
+# MOTOR VISUAL 1: RENDERIZADO ESTÁTICO PYTHON (DOM SVG INYECTADO)
 # =============================================================================
 def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_extra="", active_sers_list=SER_DATA, gap_vias=200):
     W = 1200
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
-    # Coordenadas Corregidas Definitivas (UX/UI Espaciado)
-    Y_44KV = 100    # Empujado hacia abajo para dar respiro al título
+    # Coordenadas Topográficas 
+    Y_44KV = 100    
     Y_SER = 150
     Y_V2 = 200
     Y_V1 = Y_V2 + gap_vias
@@ -134,30 +135,217 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
                 base_dy = r_c + 16
                 if side == 'down': base_dy += 28
 
-            # Sanitización de tooltips para SVG <title>
             safe_tooltip = str(row.get("tooltip", "")).replace("\n", "&#10;").replace("<b>", "").replace("</b>", "")
             
-            # Dibujar Tren (Círculo interactivo)
             svg += f'<circle cx="{xp}" cy="{y_ln}" r="{r_c}" fill="{color}" stroke="black" stroke-width="2"><title>{safe_tooltip}</title></circle>'
             
-            # Caja de texto (Servicio y Flota)
             svg += f'<rect x="{xp-45}" y="{y_ln+base_dy-12}" width="90" height="24" fill="white" fill-opacity="0.85" rx="3" stroke="#ccc" stroke-width="1"/>'
             svg += f'<text x="{xp}" y="{y_ln+base_dy-2}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">{xt_lbl}</text>'
             svg += f'<text x="{xp}" y="{y_ln+base_dy+9}" font-size="9" font-weight="bold" fill="#111" text-anchor="middle">Serv. {serv}</text>'
             
-            # Textos laterales de Energía y Pasajeros
             svg += f'<text x="{xp - r_c - 6}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#2E7D32" text-anchor="end">{kwh_n:.0f} kWh</text>'
             svg += f'<text x="{xp + r_c + 6}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#1565c0" text-anchor="start">{pax_v} pax</text>'
             
-            # Distancia al próximo tren
             if sep_s:
                 sep_dy = base_dy - 22 if via == 2 else base_dy + 22
                 svg += f'<text x="{xp}" y="{y_ln+sep_dy}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">{sep_s}</text>'
 
     svg += '</svg>'
-    
-    # Minificación y Retorno de Altura dinámica (Firma Corregida)
     return svg.replace('\n', ''), H
+
+# =============================================================================
+# MOTOR VISUAL 2: MOTOR SCADA EN JAVASCRIPT (CLIENT-SIDE RENDERING)
+# =============================================================================
+def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titulo_extra, active_sers_list, gap_vias, use_rm):
+    """
+    Empaqueta el perfil matemático del día completo en un JSON y genera un Iframe HTML.
+    JavaScript procesará la interpolación lineal de 60 FPS usando la CPU/GPU del cliente.
+    """
+    trips_data = []
+    
+    # 1. Muestreo Físico a JSON
+    for _, row in df_dia_e.iterrows():
+        t_ini, t_fin = float(row['t_ini']), float(row['t_fin'])
+        # Muestreamos la trayectoria cada 0.5 minutos para un JSON ultra-ligero pero preciso
+        t_points = np.arange(t_ini, t_fin + 0.5, 0.5)
+        if t_points[-1] < t_fin:
+            t_points = np.append(t_points, t_fin)
+            
+        traj = []
+        for t in t_points:
+            km = km_at_t(row['t_ini'], row['t_fin'], t, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
+            traj.append([round(t, 2), round(km, 3)])
+            
+        trips_data.append({
+            'id': str(row['_id']),
+            'Via': int(row['Via']),
+            't_ini': t_ini,
+            't_fin': t_fin,
+            'svc': str(row.get('num_servicio', '')),
+            'motriz': str(row.get('motriz_num', '')),
+            'tipo': str(row.get('tipo_tren', 'XT-100')),
+            'doble': bool(row.get('doble', False)),
+            'kwh': float(row.get('kwh_viaje_neto', 0)),
+            'pax': int(row.get('pax_abordo', 0)),
+            'traj': traj
+        })
+        
+    json_data = json.dumps(trips_data)
+    
+    # 2. Generación del Fondo Estático
+    svg_bg, H = draw_diagram_svg(pd.DataFrame(), ser_accum_plot, seat_accum_plot, "Modo SCADA Animado", titulo_extra, active_sers_list, gap_vias)
+    svg_bg = svg_bg.replace('</svg>', '<g id="trains_layer"></g></svg>') # Capa transparente para JS
+    
+    # 3. Lógica JavaScript de Alto Rendimiento (requestAnimationFrame)
+    js_code = """
+    const trips = JSON_DATA_HERE;
+    const W = 1200;
+    const KM_TOTAL = KM_TOTAL_HERE;
+    const gap_vias = GAP_VIAS_HERE;
+    const Y_V2 = 200;
+    const Y_V1 = Y_V2 + gap_vias;
+    
+    let currentTime = HORA_INICIAL_HERE;
+    let playing = false;
+    let lastTimestamp = 0;
+    
+    const playBtn = document.getElementById('playBtn');
+    const timeSlider = document.getElementById('timeSlider');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const speedSelect = document.getElementById('speedSelect');
+    const trainsLayer = document.getElementById('trains_layer');
+    
+    function formatTime(mins) {
+        let h = Math.floor(mins / 60);
+        let m = Math.floor(mins % 60);
+        return (h < 10 ? '0'+h : h) + ':' + (m < 10 ? '0'+m : m);
+    }
+    
+    function xkm(km) { return km * (W / KM_TOTAL); }
+    
+    function getPos(traj, t) {
+        if (t <= traj[0][0]) return traj[0][1];
+        if (t >= traj[traj.length-1][0]) return traj[traj.length-1][1];
+        for(let i=0; i<traj.length-1; i++) {
+            if(t >= traj[i][0] && t <= traj[i+1][0]) {
+                let p = (t - traj[i][0]) / (traj[i+1][0] - traj[i][0]);
+                return traj[i][1] + p * (traj[i+1][1] - traj[i][1]);
+            }
+        }
+        return traj[0][1];
+    }
+    
+    function drawTrains() {
+        let html = '';
+        let activeTrips = trips.filter(tr => currentTime >= tr.t_ini && currentTime <= tr.t_fin);
+        
+        activeTrips.forEach((tr, index) => {
+            let km = getPos(tr.traj, currentTime);
+            let xp = xkm(km);
+            let y_ln = tr.Via === 2 ? Y_V2 : Y_V1;
+            let color = tr.Via === 2 ? '#c62828' : '#1565c0';
+            let r_c = tr.doble ? 18 : 11;
+            
+            let base_dy = tr.Via === 2 ? (-r_c - 16) : (r_c + 16);
+            if (index % 2 !== 0) {
+                base_dy = tr.Via === 2 ? base_dy - 28 : base_dy + 28;
+            }
+            
+            let lbl = tr.tipo === 'SFE' ? 'SFE' : (tr.tipo === 'XT-M' ? 'Modular' : 'XT-100');
+            if (tr.motriz) lbl += ' [' + tr.motriz + ']';
+            
+            html += `<circle cx="${xp}" cy="${y_ln}" r="${r_c}" fill="${color}" stroke="black" stroke-width="2"/>`;
+            html += `<rect x="${xp-45}" y="${y_ln+base_dy-12}" width="90" height="24" fill="white" fill-opacity="0.85" rx="3" stroke="#ccc"/>`;
+            html += `<text x="${xp}" y="${y_ln+base_dy-2}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">${lbl}</text>`;
+            html += `<text x="${xp}" y="${y_ln+base_dy+9}" font-size="9" font-weight="bold" fill="#111" text-anchor="middle">Serv. ${tr.svc}</text>`;
+            html += `<text x="${xp - r_c - 6}" y="${y_ln+3}" font-size="10" font-weight="bold" fill="#2E7D32" text-anchor="end">${Math.round(tr.kwh)} kWh</text>`;
+            html += `<text x="${xp + r_c + 6}" y="${y_ln+3}" font-size="10" font-weight="bold" fill="#1565c0" text-anchor="start">${tr.pax} pax</text>`;
+        });
+        
+        trainsLayer.innerHTML = html;
+        timeDisplay.innerText = formatTime(currentTime);
+    }
+    
+    function loop(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        let deltaTime = timestamp - lastTimestamp;
+        lastTimestamp = timestamp;
+        
+        if (playing) {
+            let speed = parseFloat(speedSelect.value);
+            // 1 sec real = 1/60 mins sim. Adjusted via speed multiplier.
+            let deltaMins = (deltaTime / 1000) * (1/60) * speed * 60; 
+            currentTime += deltaMins;
+            if (currentTime >= 1439) {
+                currentTime = 1439;
+                playing = false;
+                playBtn.innerText = '▶️ Iniciar Simulación';
+                playBtn.style.background = '#1565c0';
+            }
+            timeSlider.value = currentTime;
+            drawTrains();
+        }
+        requestAnimationFrame(loop);
+    }
+    
+    playBtn.addEventListener('click', () => {
+        playing = !playing;
+        playBtn.innerText = playing ? '⏸ Pausa' : '▶️ Iniciar Simulación';
+        playBtn.style.background = playing ? '#c62828' : '#1565c0';
+        if(playing) lastTimestamp = 0;
+    });
+    
+    timeSlider.addEventListener('input', (e) => {
+        currentTime = parseFloat(e.target.value);
+        drawTrains();
+    });
+    
+    drawTrains();
+    requestAnimationFrame(loop);
+    """
+    
+    # Inyección Segura (Evita conflicto de brackets {} de f-strings)
+    js_code = js_code.replace("JSON_DATA_HERE", json_data)
+    js_code = js_code.replace("KM_TOTAL_HERE", str(KM_TOTAL))
+    js_code = js_code.replace("GAP_VIAS_HERE", str(gap_vias))
+    js_code = js_code.replace("HORA_INICIAL_HERE", str(hora_inicial))
+
+    html_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+            .controls {{ display: flex; gap: 15px; align-items: center; background: #f8f9fa; padding: 12px 20px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 10px; }}
+            button {{ background: #1565c0; color: white; border: none; padding: 8px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 14px; transition: background 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            button:hover {{ filter: brightness(1.1); }}
+            input[type=range] {{ flex-grow: 1; cursor: pointer; }}
+            .time-disp {{ font-family: monospace; font-size: 24px; font-weight: bold; color: #111; min-width: 80px; text-align: center; background: white; padding: 4px 10px; border-radius: 4px; border: 1px solid #ccc; }}
+            select {{ padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold; background: white; cursor: pointer; }}
+        </style>
+    </head>
+    <body>
+        <div class="controls">
+            <button id="playBtn">▶️ Iniciar Simulación</button>
+            <input type="range" id="timeSlider" min="0" max="1439" step="0.1" value="{hora_inicial}">
+            <div class="time-disp" id="timeDisplay">00:00</div>
+            <select id="speedSelect">
+                <option value="1">1x (Tiempo Real)</option>
+                <option value="5" selected>5x (Rápido)</option>
+                <option value="15">15x (Muy Rápido)</option>
+                <option value="60">60x (Time-Lapse)</option>
+            </select>
+        </div>
+        <div id="mapContainer">
+            {svg_bg}
+        </div>
+        <script>
+            {js_code}
+        </script>
+    </body>
+    </html>
+    """
+    return html_template, H
 
 # =============================================================================
 # TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
@@ -197,73 +385,23 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if 'maniobra' not in df_dia.columns: df_dia['maniobra'] = None
     if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
     
-    # -------------------------------------------------------------------------
-    # DESACOPLE DE ESTADO DEFINITIVO (DEADLOCK FIX)
-    # Streamlit requiere que NO pasemos "value" al slider si queremos inyectar
-    # el dato directamente a su st.session_state[key].
-    # -------------------------------------------------------------------------
     slider_key = f"sl_ui_{prefix_key}"
-    time_key = f"t_math_{prefix_key}"
-    
     if slider_key not in st.session_state: 
         st.session_state[slider_key] = 480.0
-    if time_key not in st.session_state: 
-        st.session_state[time_key] = 480.0
-    if f'play_{prefix_key}' not in st.session_state: 
-        st.session_state[f'play_{prefix_key}'] = False
         
     cf, cm = st.columns([3,2])
     with cm: 
-        modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"modo_{prefix_key}")
+        modo = st.radio("Motor de Renderizado", ["🔒 Analítico (Python Estático)", "🚀 SCADA (JS Animado 60FPS)"], horizontal=True, key=f"modo_{prefix_key}")
 
-    if modo != "▶️ Animado": 
-        st.session_state[f'play_{prefix_key}'] = False
+    # Lógica de Botones Manuales (Aplica para ambos modos para setear hora inicial)
+    c1,c2,c3,c4 = st.columns([1,1,1,3])
+    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
+    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
+    if c3.button("+1m", key=f"p1_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
+    if c4.button("+15m", key=f"p15_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
 
-    # Lógica Matemática que empuja el Slider directamente en memoria (sin intermediarios)
-    if st.session_state[f'play_{prefix_key}']:
-        speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        new_val = st.session_state[time_key] + (0.5 * speed) # Pasos más amplios (fluidez visual)
-        if new_val >= 1439.0:
-            st.session_state[time_key] = 1439.0
-            st.session_state[f'play_{prefix_key}'] = False
-        else:
-            st.session_state[time_key] = new_val
-
-    c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
-    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
-    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 1.0)
-    
-    if modo == "▶️ Animado":
-        if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
-            st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
-            st.rerun() # Inicia/Pausa el bucle
-            
-    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
-    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
-
-    # El Slider se actualiza a sí mismo (callback inverso) para sincronizar interacciones manuales
-    def sync_time():
-        st.session_state[time_key] = st.session_state[slider_key]
-
-    st.slider("Timeline", min_value=0.0, max_value=1439.0, 
-              value=float(st.session_state[time_key]), 
-              step=0.1, key=slider_key, on_change=sync_time)
-
-    # Forzar la hora maestra a la variable de cálculo
-    hora_m1 = st.session_state[time_key]
+    hora_m1 = st.slider("Línea de Tiempo Principal (Hora Fija de Evaluación)", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
     hora_s1 = mins_to_time_str(hora_m1)
-
-    if modo == "▶️ Animado":
-        st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
-
-    st.markdown(
-        f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1[:5]}</span>"
-        f"<span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; "
-        f"⚙️ {pct_trac}% Tracción"
-        + (" &nbsp;·&nbsp; ▶️" if st.session_state[f'play_{prefix_key}'] else "")
-        + "</span>",
-        unsafe_allow_html=True
-    )
 
     df_act = df_dia_e[(df_dia_e['t_ini'] <= hora_m1) & (df_dia_e['t_fin'] > hora_m1)].copy()
     
@@ -273,7 +411,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if not df_act.empty:
         frac_act = (hora_m1 - df_act['t_ini']) / np.maximum(0.001, df_act['t_fin'] - df_act['t_ini'])
         df_act['kwh_neto'] = df_act['kwh_viaje_neto'] * frac_act
-        
         df_act['km_pos'] = df_act.apply(lambda r: km_at_t(r['t_ini'], r['t_fin'], hora_m1, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos')), axis=1)
         
         def _vel_real(r):
@@ -464,84 +601,84 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    # INYECCIÓN FINAL DE SVG (Iframe Component para aislar el HTML del Markdown Engine)
-    svg_html, height_px = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias)
-    components.html(svg_html, height=height_px)
-
-    st.divider()
-    n_circ = len(df_act) if not df_act.empty else 0
-    n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
-    n_v1   = int((df_act['Via']==1).sum()) if not df_act.empty else 0
-    n_v2   = int((df_act['Via']==2).sum()) if not df_act.empty else 0
-    pax_t  = int(df_act['pax_inst'].sum()) if not df_act.empty else 0
-    kwh_t  = round(df_act['kwh_neto'].sum(),0) if (not df_act.empty and 'kwh_neto' in df_act.columns) else 0
-    regen_t= round(t_regen_acum, 0)
-    trenkm = round(df_act['tren_km'].sum(),1) if (not df_act.empty and 'tren_km' in df_act.columns) else 0.0
-    km_rec = df_act['km_rec'].sum() if (not df_act.empty and 'km_rec' in df_act.columns) else 0
-    ide_i  = round(kwh_t/max(1, km_rec), 3) if km_rec > 0 else 0.0
-
-    st.markdown(f"#### 🕐 Instantáneo — {hora_s1[:5]}")
-    r1a,r1b,r1c,r1d = st.columns(4)
-    r1a.metric("🚆 Servicios", n_circ)
-    r1b.metric("V1→Limache", n_v1)
-    r1c.metric("V2←Puerto", n_v2)
-    r1d.metric("🚈 Doble (Original)", n_d)
-    
-    r2a,r2b,r2c,r2d = st.columns(4)
-    r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{pax_t:,}")
-    r2b.metric("⚡ kWh neto", f"{kwh_t:,.0f}", f"−{regen_t:,.0f} regen util")
-    r2c.metric("📏 Tren-km Inst.", f"{trenkm:,.1f}")
-    r2d.metric("💡 IDE inst.", f"{ide_i:.3f} kWh/km")
-
-    st.divider()
-    st.markdown("#### 🔌 Cargabilidad Instantánea de Subestaciones (Squeeze Control)")
-    st.caption("Muestra la demanda real en kW que los trenes exigen a la red en este mismo segundo. Los rectificadores son unidireccionales (Diodos).")
-    
-    if not active_sers:
-        st.info("No hay SERs activas para monitorear.")
+    # =========================================================================
+    # BIFURCACIÓN DE RENDERIZADO: SCADA vs PYTHON
+    # =========================================================================
+    if "SCADA" in modo:
+        html_scada, H_scada = draw_scada_js(df_dia_e, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_m1, "", active_sers, gap_vias, use_rm)
+        components.html(html_scada, height=H_scada + 100)
+        st.info("💡 **Modo SCADA Activado:** La animación se procesa a 60 FPS en el Hardware Local. Los paneles analíticos inferiores muestran la " + f"**fotografía estática de las {hora_s1[:5]}**" + " seleccionada en la Línea de Tiempo Principal.")
     else:
-        flujo_ac_dc = calcular_flujo_ac_nodo(instant_ser_demands_kw)
+        st.markdown(
+            f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1[:5]}</span>"
+            f"<span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; "
+            f"⚙️ {pct_trac}% Tracción</span>",
+            unsafe_allow_html=True
+        )
+        svg_html, H_python = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias)
+        st.markdown(svg_html, unsafe_allow_html=True)
         
-        st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas térmicas AC (I²R) de la red troncal en este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
-        
-        cols_ser = st.columns(len(active_sers))
-        for i, ser_info in enumerate(active_sers):
-            s_name = ser_info[1]
-            cap_kw = SER_CAPACITY_KW.get(s_name, 3000.0)
-            
-            dem_kw_bruta = instant_ser_demands_kw.get(s_name, 0.0)
-            dem_kw = max(0.0, dem_kw_bruta) 
-            
-            vac_actual = flujo_ac_dc.get(s_name, {}).get('Vac', V_NOMINAL_AC)
-            vdc_actual = flujo_ac_dc.get(s_name, {}).get('Vdc', 3000.0)
-            
-            pct_carga = (dem_kw / cap_kw) * 100.0
-            
-            if dem_kw == 0.0 and dem_kw_bruta < -10.0:
-                color_bar = "#9E9E9E" 
-                texto_estado = "Bloqueo Diodos (Quemando en Reóstato)"
-            elif vdc_actual < 2600.0:
-                color_bar = "#C62828"
-                texto_estado = "⚠️ SQUEEZE CONTROL (Bajo Voltaje)"
-            elif vdc_actual < 2850.0:
-                color_bar = "#F9A825"
-                texto_estado = "Estrés Moderado (Caída AC)"
-            elif pct_carga <= 65:
-                color_bar = "#1565C0"
-                texto_estado = "Carga Óptima"
-            else:
-                color_bar = "#F9A825"
-                texto_estado = "Capacidad exigida"
-                
-            with cols_ser[i]:
-                st.markdown(f"**{s_name}** ({cap_kw/1000:.1f} MVA)")
-                st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size:13px; font-family:monospace; margin-bottom:4px;'>"
-                            f"<span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br>"
-                            f"<span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
-                st.markdown(f"<span style='font-size:11px; color:#666;'>Factor Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
+        # Tarjetas Instantáneas (Solo se muestran en Modo Python)
+        n_circ = len(df_act) if not df_act.empty else 0
+        n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
+        n_v1   = int((df_act['Via']==1).sum()) if not df_act.empty else 0
+        n_v2   = int((df_act['Via']==2).sum()) if not df_act.empty else 0
+        pax_t  = int(df_act['pax_inst'].sum()) if not df_act.empty else 0
+        kwh_t  = round(df_act['kwh_neto'].sum(),0) if (not df_act.empty and 'kwh_neto' in df_act.columns) else 0
+        regen_t= round(t_regen_acum, 0)
+        trenkm = round(df_act['tren_km'].sum(),1) if (not df_act.empty and 'tren_km' in df_act.columns) else 0.0
+        km_rec = df_act['km_rec'].sum() if (not df_act.empty and 'km_rec' in df_act.columns) else 0
+        ide_i  = round(kwh_t/max(1, km_rec), 3) if km_rec > 0 else 0.0
 
+        st.divider()
+        st.markdown(f"#### 🕐 Monitor Instantáneo Dinámico")
+        r1a,r1b,r1c,r1d = st.columns(4)
+        r1a.metric("🚆 Servicios", n_circ)
+        r1b.metric("V1→Limache", n_v1)
+        r1c.metric("V2←Puerto", n_v2)
+        r1d.metric("🚈 Doble (Original)", n_d)
+        
+        r2a,r2b,r2c,r2d = st.columns(4)
+        r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{pax_t:,}")
+        r2b.metric("⚡ kWh neto", f"{kwh_t:,.0f}", f"−{regen_t:,.0f} regen util")
+        r2c.metric("📏 Tren-km Inst.", f"{trenkm:,.1f}")
+        r2d.metric("💡 IDE inst.", f"{ide_i:.3f} kWh/km")
+
+        st.divider()
+        st.markdown("#### 🔌 Cargabilidad Instantánea de Subestaciones (Squeeze Control)")
+        st.caption("Muestra la demanda real en kW que los trenes exigen a la red en este mismo segundo. Los rectificadores son unidireccionales (Diodos).")
+        
+        if not active_sers:
+            st.info("No hay SERs activas para monitorear.")
+        else:
+            flujo_ac_dc = calcular_flujo_ac_nodo(instant_ser_demands_kw)
+            st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas térmicas AC (I²R) de la red troncal en este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
+            cols_ser = st.columns(len(active_sers))
+            for i, ser_info in enumerate(active_sers):
+                s_name = ser_info[1]
+                cap_kw = SER_CAPACITY_KW.get(s_name, 3000.0)
+                dem_kw_bruta = instant_ser_demands_kw.get(s_name, 0.0)
+                dem_kw = max(0.0, dem_kw_bruta) 
+                vac_actual = flujo_ac_dc.get(s_name, {}).get('Vac', V_NOMINAL_AC)
+                vdc_actual = flujo_ac_dc.get(s_name, {}).get('Vdc', 3000.0)
+                pct_carga = (dem_kw / cap_kw) * 100.0
+                
+                if dem_kw == 0.0 and dem_kw_bruta < -10.0: color_bar, texto_estado = "#9E9E9E", "Bloqueo Diodos (Reóstato)"
+                elif vdc_actual < 2600.0: color_bar, texto_estado = "#C62828", "⚠️ SQUEEZE CONTROL"
+                elif vdc_actual < 2850.0: color_bar, texto_estado = "#F9A825", "Estrés Moderado (Caída AC)"
+                elif pct_carga <= 65: color_bar, texto_estado = "#1565C0", "Carga Óptima"
+                else: color_bar, texto_estado = "#F9A825", "Capacidad exigida"
+                    
+                with cols_ser[i]:
+                    st.markdown(f"**{s_name}** ({cap_kw/1000:.1f} MVA)")
+                    st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:13px; font-family:monospace; margin-bottom:4px;'><span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br><span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-size:11px; color:#666;'>Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
+
+    # =========================================================================
+    # MÉTRICAS ACUMULADAS (SIEMPRE VISIBLES, REFLEJAN HORA_M1)
+    # =========================================================================
     df_comp = df_dia_e[df_dia_e['t_fin']<=hora_m1]
     df_inic = df_dia_e[df_dia_e['t_ini']<=hora_m1]
     n_inic  = len(df_inic)
@@ -551,7 +688,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     ide_ac  = round(seat_accum_1 / max(1, df_inic['tren_km'].sum() + vacio_km_total), 3) if not df_inic.empty and (df_inic['tren_km'].sum() + vacio_km_total) > 0 else 0.0
 
     st.divider()
-    st.markdown(f"#### 📊 Acumulado 00:00 → {hora_s1[:5]}")
+    st.markdown(f"#### 📊 Análisis Global Acumulado (00:00 → {hora_s1[:5]})")
     
     if not df_inic.empty:
         st.markdown("##### 🚆 Total de Servicios Despachados por Trayecto y Flota")
@@ -760,7 +897,3 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 ec1, ec2 = st.columns(2)
                 with ec1: st.plotly_chart(fig_pie, use_container_width=True)
                 with ec2: st.plotly_chart(fig_hora, use_container_width=True)
-
-        if st.session_state[f'play_{prefix_key}']:
-            time.sleep(max(0.01, 0.1 / speed))
-            st.rerun()
