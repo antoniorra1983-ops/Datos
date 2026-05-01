@@ -137,7 +137,8 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
                 svg += f'<text x="{xp}" y="{y_ln+dy_sep}" font-size="11" font-weight="bold" fill="#111" text-anchor="middle">{sep_s}</text>'
 
     svg += '</svg>'
-    return svg
+    # REGLA DE ORO DE MARKDOWN: Eliminar todos los saltos de línea para inyectar como HTML atómico
+    return svg.replace('\n', '')
 
 def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
     if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
@@ -423,7 +424,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    # INYECCIÓN FINAL DE SVG 
+    # INYECCIÓN FINAL DE SVG (CON FIX DE MARKDOWN PARA RENDERIZADO REACTIVO)
     st.markdown(draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias), unsafe_allow_html=True)
 
     st.divider()
@@ -572,7 +573,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             ser_cols = st.columns(len(active_sers))
             for i, ser_info in enumerate(active_sers):
                 s_name = ser_info[1]
-                e_ser_panto = ser_accum_visual.get(s_name, 0.0)
+                e_ser_panto = ser_accum_1.get(s_name, 0.0)
                 e_ser_44 = max(0.0, e_ser_panto) / ETA_SER_RECTIFICADOR
                 ide_ser = e_ser_44 / max(1.0, km_total_red)
                 html_ser = f"""
