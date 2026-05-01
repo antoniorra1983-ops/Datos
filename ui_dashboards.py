@@ -1,143 +1,143 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 import time
+import plotly.graph_objects as go
 from config import *
 from etl_parser import mins_to_time_str, get_vacios_dia, get_pax_at_km
 from red_electrica import calcular_flujo_ac_nodo, distribuir_potencia_sers_kw, distribuir_energia_sers
 from motor_fisico import km_at_t, vel_at_km, get_train_state_and_speed, calcular_aux_dinamico, simular_tramo_termodinamico
 
-def draw_diagram(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_extra="", active_sers_list=SER_DATA, gap_vias=200):
+# =============================================================================
+# MOTOR VISUAL 60 FPS (INYECCIÓN DOM - SVG)
+# =============================================================================
+def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_extra="", active_sers_list=SER_DATA, gap_vias=200):
     W = 1200
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
     Y_V2 = 260
     Y_V1 = Y_V2 - gap_vias
-    MARGIN = 90
+    MARGIN_TOP = 90
+    MARGIN_BOT = 150
     Y_44KV = Y_V2 + 90
-    Y_SER  = Y_V2 + 40
-    y_min  = Y_V1 - MARGIN
-    y_max  = Y_V2 + 150
-    H      = max(320, y_max - y_min)
-    y_mid  = (Y_V1 + Y_V2) / 2
+    Y_SER = Y_V2 + 40
+    y_min = Y_V1 - MARGIN_TOP
+    y_max = Y_V2 + MARGIN_BOT
+    H = int(y_max - y_min)
+    y_mid = (Y_V1 + Y_V2) / 2
 
-    fig = go.Figure()
-    fig.update_layout(
-        height=H, margin=dict(l=10, r=10, t=45, b=10),
-        xaxis=dict(range=[0, W], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True),
-        yaxis=dict(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, fixedrange=True),
-        plot_bgcolor='white', paper_bgcolor='white',
-        font=dict(color='black'), showlegend=False, hovermode='closest',
-        title=dict(text=f"MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI", font=dict(size=12, color='black'), x=0.5),
-    )
-
-    fig.add_shape(type='line', x0=0, x1=W, y0=Y_V2, y1=Y_V2, line=dict(color='#c62828', width=5))
-    fig.add_shape(type='line', x0=0, x1=W, y0=Y_V1, y1=Y_V1, line=dict(color='#1565c0', width=5))
-    fig.add_shape(type='line', x0=0, x1=W, y0=Y_44KV, y1=Y_44KV, line=dict(color='#FBC02D', width=3, dash='dash'))
-    fig.add_annotation(x=W/2, y=Y_44KV+10, text="<b>Línea AC 44kV</b>", showarrow=False, font=dict(size=10, color='#FBC02D'))
+    svg = f'''
+    <svg width="100%" height="{H}" viewBox="0 {y_min} {W} {H}" xmlns="http://www.w3.org/2000/svg" style="background-color: white; font-family: sans-serif; border-radius: 8px; border: 1px solid #ddd; display: block; margin-bottom: 20px;">
+        <text x="{W/2}" y="{y_min + 20}" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
+        
+        <line x1="0" y1="{Y_V2}" x2="{W}" y2="{Y_V2}" stroke="#c62828" stroke-width="5" />
+        <line x1="0" y1="{Y_V1}" x2="{W}" y2="{Y_V1}" stroke="#1565c0" stroke-width="5" />
+        
+        <line x1="0" y1="{Y_44KV}" x2="{W}" y2="{Y_44KV}" stroke="#FBC02D" stroke-width="3" stroke-dasharray="10,5" />
+        <text x="{W/2}" y="{Y_44KV+12}" font-size="10" font-weight="bold" fill="#FBC02D" text-anchor="middle">Línea AC 44kV</text>
+    '''
 
     for i, (ec, km) in enumerate(zip(EC, KM_ACUM[:N_EST])):
         xp = xkm(km)
-        fig.add_shape(type='line', x0=xp, x1=xp, y0=Y_V1-20, y1=Y_V2+20, line=dict(color='#bbb', width=1, dash='dot'))
-        y_ec = y_mid + (12 if i % 2 == 0 else -12)
-        fig.add_annotation(x=xp, y=y_ec, text=ec, showarrow=False, font=dict(size=8, color='#555'), xanchor='center', yanchor='middle')
+        y_ec = y_mid + (15 if i % 2 == 0 else -15)
+        svg += f'<line x1="{xp}" y1="{Y_V1-20}" x2="{xp}" y2="{Y_V2+20}" stroke="#bbb" stroke-width="1" stroke-dasharray="2,2" />'
+        svg += f'<text x="{xp}" y="{y_ec}" font-size="9" font-weight="bold" fill="#555" text-anchor="middle" dominant-baseline="middle">{ec}</text>'
 
     seat_x = xkm(SEAT_KM)
-    fig.add_trace(go.Scatter(
-        x=[seat_x], y=[Y_44KV + 30], mode='markers+text',
-        marker=dict(symbol='triangle-up', size=22, color='#FBC02D', line=dict(color='black', width=2)),
-        text=f"<b>⚡ SEAT EL SOL<br>{seat_accum_plot:,.0f} kWh</b>", textposition="top center",
-        textfont=dict(size=10, color='black'), showlegend=False, hoverinfo='skip'
-    ))
-    fig.add_shape(type='line', x0=seat_x, x1=seat_x, y0=Y_44KV+30, y1=Y_44KV, line=dict(color='#FBC02D', width=4))
+    svg += f'''
+        <polygon points="{seat_x},{Y_44KV+20} {seat_x-10},{Y_44KV+40} {seat_x+10},{Y_44KV+40}" fill="#FBC02D" stroke="black" stroke-width="1" />
+        <text x="{seat_x}" y="{Y_44KV+55}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">⚡ SEAT EL SOL</text>
+        <text x="{seat_x}" y="{Y_44KV+68}" font-size="10" fill="#111" text-anchor="middle">{seat_accum_plot:,.0f} kWh</text>
+        <line x1="{seat_x}" y1="{Y_44KV+20}" x2="{seat_x}" y2="{Y_44KV}" stroke="#FBC02D" stroke-width="4" />
+    '''
 
+    active_names = [s[1] for s in active_sers_list]
     for skm, nombre_ser in SER_DATA:
         xp = xkm(skm)
-        is_active = nombre_ser in [s[1] for s in active_sers_list]
+        is_active = nombre_ser in active_names
         val = ser_accum_plot.get(nombre_ser, 0.0)
         
         if is_active:
-            color, fill, dash_st = '#FBC02D', '#FFF3E0', 'dot'
-            txt_color = '#E65100'
-            fig.add_shape(type='line', x0=xp, x1=xp, y0=Y_SER-15, y1=Y_V1, line=dict(color='#E65100', width=2))
-            lbl = f"<b>{nombre_ser}</b><br><span style='font-size:8px'>{val:,.0f} kWh</span>"
+            color, fill, txt_color = "#FBC02D", "#FFF3E0", "#E65100"
+            status_lbl = f"{val:,.0f} kWh"
+            svg += f'<line x1="{xp}" y1="{Y_SER-15}" x2="{xp}" y2="{Y_V1}" stroke="#E65100" stroke-width="2" />'
+            dash = ""
         else:
-            color, fill, dash_st = '#9E9E9E', '#F5F5F5', 'dash'
-            txt_color = '#757575'
-            fig.add_annotation(x=xp, y=Y_SER-25, text="❌ FALLA", showarrow=False, font=dict(size=10, color='red'))
-            lbl = f"<b>{nombre_ser}</b><br><span style='font-size:8px'>OFF</span>"
+            color, fill, txt_color = "#9E9E9E", "#F5F5F5", "#757575"
+            status_lbl = "OFF"
+            svg += f'<text x="{xp}" y="{Y_SER-25}" font-size="10" font-weight="bold" fill="red" text-anchor="middle">❌ FALLA</text>'
+            dash = 'stroke-dasharray="5,5"'
 
-        fig.add_shape(type='line', x0=xp, x1=xp, y0=Y_44KV, y1=Y_SER+15, line=dict(color=color, width=2, dash=dash_st))
-        fig.add_shape(type='rect', x0=xp-30, x1=xp+30, y0=Y_SER-15, y1=Y_SER+15, line=dict(color=color, width=2), fillcolor=fill)
-        fig.add_annotation(x=xp, y=Y_SER, text=lbl, showarrow=False, font=dict(size=9, color=txt_color), align='center')
+        svg += f'<line x1="{xp}" y1="{Y_44KV}" x2="{xp}" y2="{Y_SER+15}" stroke="{color}" stroke-width="2" {dash}/>'
+        svg += f'<rect x="{xp-30}" y="{Y_SER-15}" width="60" height="30" fill="{fill}" stroke="{color}" stroke-width="2" rx="4" />'
+        svg += f'<text x="{xp}" y="{Y_SER-2}" font-size="10" font-weight="bold" fill="{txt_color}" text-anchor="middle">{nombre_ser}</text>'
+        svg += f'<text x="{xp}" y="{Y_SER+10}" font-size="9" fill="{txt_color}" text-anchor="middle">{status_lbl}</text>'
 
-    if df_act_plot.empty: return fig
+    if not df_act_plot.empty:
+        COLL_PX = 100
+        label_side = {}
+        for via_ in [1, 2]:
+            sub = df_act_plot[df_act_plot['Via'] == via_].copy()
+            if sub.empty: continue
+            sub_sorted = sub.sort_values('km_pos')
+            indices = list(sub_sorted.index)
+            for i, idx in enumerate(indices):
+                xp_i = xkm(sub_sorted.loc[idx, 'km_pos'])
+                close = False
+                if i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX: close = True
+                if i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX: close = True
+                label_side[idx] = ('up' if i % 2 == 0 else 'down') if close else 'up'
 
-    COLL_PX = 100
-    label_side = {}
-    for via_ in [1, 2]:
-        sub = df_act_plot[df_act_plot['Via'] == via_].copy()
-        if sub.empty: continue
-        sub_sorted = sub.sort_values('km_pos')
-        indices = list(sub_sorted.index)
-        for i, idx in enumerate(indices):
-            xp_i = xkm(sub_sorted.loc[idx, 'km_pos'])
-            close = False
-            if i > 0 and abs(xp_i - xkm(sub_sorted.loc[indices[i-1], 'km_pos'])) < COLL_PX: close = True
-            if i < len(indices) - 1 and abs(xp_i - xkm(sub_sorted.loc[indices[i+1], 'km_pos'])) < COLL_PX: close = True
-            label_side[idx] = ('up' if i % 2 == 0 else 'down') if close else 'up'
-
-    for idx, row in df_act_plot.iterrows():
-        via   = row['Via']
-        xp    = xkm(row['km_pos'])
-        y_ln  = Y_V2 if via == 2 else Y_V1
-        color = '#c62828' if via == 2 else '#1565c0'
-        
-        doble_tramo = row.get('doble', False)
-        man = row.get('maniobra')
-        if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
-            doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
-        elif man == 'ACOPLE_BTO':
-            doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
-        elif man == 'CORTE_SA':
-            doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
-        elif man == 'ACOPLE_SA':
-            doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
+        for idx, row in df_act_plot.iterrows():
+            via = row['Via']
+            xp = xkm(row['km_pos'])
+            y_ln = Y_V2 if via == 2 else Y_V1
+            color = '#c62828' if via == 2 else '#1565c0'
             
-        tip   = row.get('tooltip', '')
-        r_c   = 18 if doble_tramo else 11
+            doble_tramo = row.get('doble', False)
+            man = row.get('maniobra')
+            if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
+            elif man == 'ACOPLE_BTO': doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
+            elif man == 'CORTE_SA': doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
+            elif man == 'ACOPLE_SA': doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
+                
+            r_c = 18 if doble_tramo else 11
+            serv = str(row.get('num_servicio', ''))
+            motriz = str(row.get('motriz_num', ''))
+            tipo = str(row.get('tipo_tren', 'XT-100'))
+            
+            if tipo == 'SFE': xt_lbl = f"SFE [U-{motriz}]" if motriz else "SFE"
+            elif tipo == 'XT-M': xt_lbl = f"Modular [U-{motriz}]" if motriz else "Modular"
+            else: xt_lbl = f"XT-100 [U-{motriz}]" if motriz else "XT-100"
 
-        serv = str(row.get('num_servicio', ''))
-        motriz = str(row.get('motriz_num', ''))
-        tipo = str(row.get('tipo_tren', 'XT-100'))
-        
-        if tipo == 'SFE': xt_lbl = f"SFE-{motriz}" if motriz else "SFE"
-        elif tipo == 'XT-M': xt_lbl = f"XTM-{motriz}" if motriz else "XTM"
-        else: xt_lbl = f"XT-{motriz}" if motriz else "XT"
+            kwh_n = float(row.get('kwh_neto', 0))
+            pax_v = int(row.get('pax_inst', 0)) 
+            sep_r = row.get('sep_next', '—')
+            sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
 
-        kwh_n = float(row.get('kwh_neto', 0))
-        pax_v = int(row.get('pax_inst', 0)) 
-        sep_r = row.get('sep_next', '—')
-        sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
+            side = label_side.get(idx, 'up')
+            dy_mot = +(r_c + 20) if side == 'up' else -(r_c + 20)
+            dy_svc = -(r_c + 15) if side == 'up' else +(r_c + 15)
+            dy_sep = -(r_c + 32) if side == 'up' else +(r_c + 32)
 
-        side = label_side.get(idx, 'up')
-        dy_mot = +(r_c + 18) if side == 'up' else -(r_c + 18)
-        dy_svc = -(r_c + 16) if side == 'up' else +(r_c + 16)
-        dy_sep = -(r_c + 32) if side == 'up' else +(r_c + 32)
+            safe_tooltip = row.get("tooltip", "").replace("<br>", "&#10;").replace("<b>", "").replace("</b>", "")
+            svg += f'<circle cx="{xp}" cy="{y_ln}" r="{r_c}" fill="{color}" stroke="black" stroke-width="2"><title>{safe_tooltip}</title></circle>'
+            
+            svg += f'<rect x="{xp-40}" y="{y_ln+dy_mot-10}" width="80" height="14" fill="white" fill-opacity="0.8" rx="2" />'
+            svg += f'<text x="{xp}" y="{y_ln+dy_mot}" font-size="11" font-weight="bold" fill="#111" text-anchor="middle">{xt_lbl}</text>'
+            
+            svg += f'<rect x="{xp-30}" y="{y_ln+dy_svc-10}" width="60" height="12" fill="white" fill-opacity="0.8" rx="2" />'
+            svg += f'<text x="{xp}" y="{y_ln+dy_svc}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">Serv. {serv}</text>'
+            
+            svg += f'<text x="{xp - r_c - 5}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#2E7D32" text-anchor="end">{kwh_n:.0f} kWh</text>'
+            svg += f'<text x="{xp + r_c + 5}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#1565c0" text-anchor="start">{pax_v} pax</text>'
+            
+            if sep_s:
+                svg += f'<text x="{xp}" y="{y_ln+dy_sep}" font-size="11" font-weight="bold" fill="#111" text-anchor="middle">{sep_s}</text>'
 
-        fig.add_trace(go.Scatter(x=[xp], y=[y_ln], mode='markers',
-            marker=dict(size=r_c*2, color=color, line=dict(color='black', width=2)),
-            hovertext=tip, hovertemplate='%{hovertext}<extra></extra>', showlegend=False))
-
-        fig.add_annotation(x=xp, y=y_ln + dy_mot, text=f"<b>{xt_lbl}</b>", showarrow=False, font=dict(size=11, color='#111'), bgcolor='rgba(255,255,255,0.7)')
-        fig.add_annotation(x=xp, y=y_ln + dy_svc, text=f"<b>Serv. {serv}</b>", showarrow=False, font=dict(size=10, color='#111'), bgcolor='rgba(255,255,255,0.7)')
-        fig.add_annotation(x=xp - r_c - 18, y=y_ln, text=f"{kwh_n:.0f} kWh", showarrow=False, font=dict(size=9, color='#2E7D32'), xanchor='right')
-        fig.add_annotation(x=xp + r_c + 18, y=y_ln, text=f"{pax_v} pax", showarrow=False, font=dict(size=9, color='#1565c0'), xanchor='left')
-        if sep_s: fig.add_annotation(x=xp, y=y_ln + dy_sep, text=f"<b>{sep_s}</b>", showarrow=False, font=dict(size=12, color='#111'))
-
-    return fig
+    svg += '</svg>'
+    return svg
 
 def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
     if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
@@ -149,7 +149,7 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
     tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
     regen_bruta = t_regen + t_reostat
     tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
-    ide_global  = t_neto/tren_km_t if tren_km_t > 0 else 0.0
+    ide_global  = t_neto/max(0.1, tren_km_t)
     hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
     eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
 
@@ -164,38 +164,59 @@ def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, tot
     st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
     st.divider()
 
+# =============================================================================
+# ORQUESTADOR CENTRAL: GEMELO DIGITAL
+# =============================================================================
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0, df_vacios_real=None):
     if df_vacios_real is None:
         df_vacios_real = pd.DataFrame()
         
-    if 'maniobra' not in df_dia.columns:
-        df_dia['maniobra'] = None
-    if 'maniobra' not in df_dia_e.columns:
-        df_dia_e['maniobra'] = None
+    if 'maniobra' not in df_dia.columns: df_dia['maniobra'] = None
+    if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
         
     cf, cm = st.columns([3,2])
-    with cm: modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"modo_{prefix_key}")
+    with cm: 
+        modo = st.radio("Modo", ["🔒 Estático","▶️ Animado"], horizontal=True, key=f"modo_{prefix_key}")
 
-    if f'min_slider_{prefix_key}' not in st.session_state: st.session_state[f'min_slider_{prefix_key}'] = 480.0
-    if f'play_{prefix_key}' not in st.session_state: st.session_state[f'play_{prefix_key}'] = False
-    if modo != "▶️ Animado": st.session_state[f'play_{prefix_key}'] = False
+    # =========================================================================
+    # SOLUCIÓN DE ESTADO REACTIVO: INYECCIÓN DIRECTA DE KEY (DEADLOCK FIX)
+    # =========================================================================
+    slider_key = f"min_slider_ui_{prefix_key}"
+    
+    if slider_key not in st.session_state: 
+        st.session_state[slider_key] = 480.0
+        
+    if f'play_{prefix_key}' not in st.session_state: 
+        st.session_state[f'play_{prefix_key}'] = False
+        
+    if modo != "▶️ Animado": 
+        st.session_state[f'play_{prefix_key}'] = False
 
     if st.session_state[f'play_{prefix_key}']:
         step_size = 0.2 * float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        st.session_state[f'min_slider_{prefix_key}'] = min(1439.0, st.session_state[f'min_slider_{prefix_key}'] + step_size)
-        if st.session_state[f'min_slider_{prefix_key}'] >= 1439.0: st.session_state[f'play_{prefix_key}'] = False
+        new_val = st.session_state[slider_key] + step_size
+        if new_val >= 1439.0:
+            st.session_state[slider_key] = 1439.0
+            st.session_state[f'play_{prefix_key}'] = False
+        else:
+            st.session_state[slider_key] = new_val
 
-    c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
-    if c1.button("−15",key=f"m15_{prefix_key}"): st.session_state[f'min_slider_{prefix_key}']=max(0.0,st.session_state[f'min_slider_{prefix_key}']-15.0); st.rerun()
-    if c2.button("−1", key=f"m1_{prefix_key}"):  st.session_state[f'min_slider_{prefix_key}']=max(0.0,st.session_state[f'min_slider_{prefix_key}']-1.0);  st.rerun()
+    c1, c2, c3, c4, c5, _ = st.columns([1,1,1,1,1,2])
+    if c1.button("−15", key=f"m15_{prefix_key}"): 
+        st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
+    if c2.button("−1",  key=f"m1_{prefix_key}"):  
+        st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
     if modo == "▶️ Animado":
         if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
-            st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']; st.rerun()
-    if c4.button("+1", key=f"p1_{prefix_key}"):  st.session_state[f'min_slider_{prefix_key}']=min(1439.0,st.session_state[f'min_slider_{prefix_key}']+1.0);  st.rerun()
-    if c5.button("+15",key=f"p15_{prefix_key}"): st.session_state[f'min_slider_{prefix_key}']=min(1439.0,st.session_state[f'min_slider_{prefix_key}']+15.0); st.rerun()
+            st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
+            st.rerun()
+    if c4.button("+1",  key=f"p1_{prefix_key}"):  
+        st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
+    if c5.button("+15", key=f"p15_{prefix_key}"): 
+        st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
 
-    hora_m1 = st.slider("🕐", 0.0, 1439.0, st.session_state[f'min_slider_{prefix_key}'], step=0.1, key=f"min_slider_ui_{prefix_key}")
-    st.session_state[f'min_slider_{prefix_key}'] = hora_m1
+    # El slider ahora usa exclusivamente st.session_state como fuente de la verdad
+    hora_m1 = st.slider("🕐", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
     hora_s1 = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
 
     if modo == "▶️ Animado":
@@ -204,9 +225,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     st.markdown(
         f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1}</span>"
         f"<span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; "
-        f"⚙️ {pct_trac}% Tracción"
-        + (" &nbsp;·&nbsp; ▶️" if st.session_state[f'play_{prefix_key}'] else "")
-        + "</span>",
+        f"⚙️ {pct_trac}% Tracción</span>",
         unsafe_allow_html=True
     )
 
@@ -244,30 +263,16 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             m_num = str(row.get('motriz_num', ''))
             tipo = str(row.get('tipo_tren', 'XT-100'))
             serv = str(row.get('num_servicio', ''))
-            
             nombre_tren = f"{tipo}-{m_num}" if m_num else tipo
-            
             doble_tramo = row.get('doble', False)
             man = row.get('maniobra')
-            if man == 'CORTE_BTO':
-                doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
-            elif man == 'CORTE_PU_SA_BTO':
-                doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
-            elif man == 'ACOPLE_BTO':
-                doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
-            elif man == 'CORTE_SA':
-                doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
-            elif man == 'ACOPLE_SA':
-                doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
-                
-            cab = f"<b>{nombre_tren} (Serv. {serv})</b>  {'🚈 DOBLE' if doble_tramo else '🚃 Simple'} "
-            if man == 'CORTE_BTO': cab += "(✂️ Corte en BTO)<br>"
-            elif man == 'CORTE_PU_SA_BTO': cab += "(✂️ Corte en BTO, Termina SA)<br>"
-            elif man == 'ACOPLE_BTO': cab += "(🔗 Acople en BTO)<br>"
-            elif man == 'CORTE_SA': cab += "(✂️ Corte en SA)<br>"
-            elif man == 'ACOPLE_SA': cab += "(🔗 Acople en SA)<br>"
-            else: cab += "<br>"
             
+            if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO': doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
+            elif man == 'ACOPLE_BTO': doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
+            elif man == 'CORTE_SA': doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
+            elif man == 'ACOPLE_SA': doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
+                
+            cab = f"<b>{nombre_tren} (Serv. {serv})</b>  {'🚈 DOBLE' if doble_tramo else '🚃 Simple'} <br>"
             cab += f"Vía {row['Via']}  |  km {row['km_pos']:.2f}  |  {int(row['vel'])} km/h<br>"
             
             state, v_kmh = get_train_state_and_speed(hora_m1, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
@@ -278,8 +283,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             n_unidades = 2 if doble_tramo else 1
             tara_base = (f_flota['tara_t'] + f_flota['m_iner_t']) * n_unidades
             pax_v = int(row.get('pax_inst', 0))
-            masa_pax_t = (pax_v * PAX_KG) / 1000.0
-            masa_total = tara_base + masa_pax_t
+            masa_total = tara_base + ((pax_v * PAX_KG) / 1000.0)
             
             v_ms = v_kmh / 3.6
             if n_unidades == 2: f_davis = (f_flota['davis_A'] * 2) + (f_flota['davis_B'] * 2 * v_kmh) + (f_flota['davis_C'] * 1.35 * (v_kmh**2))
@@ -298,10 +302,9 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             else: p_elec_kw = p_aux_kw
             
             dist_kw = distribuir_potencia_sers_kw(p_elec_kw, row['km_pos'], active_sers)
-            for s_n, v_kw in dist_kw.items():
-                instant_ser_demands_kw[s_n] += v_kw
+            for s_n, v_kw in dist_kw.items(): instant_ser_demands_kw[s_n] += v_kw
             
-            pax_sec = f"<b>🧑 Pax a Bordo Tramo: {pax_v}</b><br>⚖️ Masa Dinámica: {masa_total:.1f} t<br>─" * 35 + "<br>"
+            pax_sec = f"<b>🧑 Pax a Bordo: {pax_v}</b><br>⚖️ Masa Dinámica: {masa_total:.1f} t<br>─" * 35 + "<br>"
             e_sec = f"⚡ <b>Energía acumulada:</b><br>NETO: {row['kwh_neto']:.1f} kWh<br>─" * 35 + "<br>"
             return cab + pax_sec + e_sec + f"↔️ <b>Siguiente:</b> {row['sep_next']}"
 
@@ -316,9 +319,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     
     if prefix_key == "mapa":
         if not df_vacios_real.empty:
-            # ---------------------------------------------------------------------
-            # FASE 1: USO DE DATOS OFICIALES DE EFE (SPLIT PHASE SIMULATION)
-            # ---------------------------------------------------------------------
             df_dia_v = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel]
             vacios_hasta_ahora = [v for v in df_dia_v.to_dict('records') if v['t_asigned'] <= hora_m1]
             vacio_count = len(vacios_hasta_ahora)
@@ -326,11 +326,8 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             for v in vacios_hasta_ahora:
                 es_cochera = v.get('cochera', False)
                 dist_efe = v.get('dist', 0.0)
-                
-                # Integrar Kilómetros Exactos del Archivo al Dashboard
                 vacio_km_total += dist_efe + (1.0 if es_cochera else 0.0)
                 
-                # FASE A: Shunting Mode (1 km a 20 km/h en Patio Plano)
                 if es_cochera:
                     trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(
                         v['tipo'], False, 25.3, 26.3, 1, pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True
@@ -342,7 +339,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                         for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, 25.3, 26.3, active_sers).items():
                             ser_accum_1[s_name] += e_val
 
-                # FASE B: Vía Principal Oficial (Aplicando Perfil de Vía)
                 if dist_efe > 0.0:
                     trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(
                         v['tipo'], False, v['km_orig'], v['km_dest'], v['Via'], pct_trac, use_rm, use_pend, None, {}, 0, None, None, estacion_anio, v['t_asigned'], True
@@ -354,9 +350,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                         for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, v['km_orig'], v['km_dest'], active_sers).items():
                             ser_accum_1[s_name] += e_val
         else:
-            # ---------------------------------------------------------------------
-            # FASE 2: MODELO TEÓRICO DE VACÍOS (FALLBACK SI NO HAY CSV EFE)
-            # ---------------------------------------------------------------------
             vacios_dia = get_vacios_dia(df_dia)
             for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
                 man = row['maniobra']
@@ -365,13 +358,13 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
                 
                 if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
-                    vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto (Corte)', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                    vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
                 elif man == 'ACOPLE_BTO':
-                    vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                    vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
                 elif man == 'CORTE_SA':
-                    vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+                    vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
                 elif man == 'ACOPLE_SA':
-                    vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+                    vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
 
             vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
             vacio_count = len(vacios_hasta_ahora)
@@ -390,8 +383,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 
                 e_pant_vacio = trc_v + aux_v - reg_v
                 if active_sers:
-                    distrib_sers = distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers)
-                    for s_name, e_val in distrib_sers.items():
+                    for s_name, e_val in distribuir_energia_sers(e_pant_vacio, t_horas_v, v['km_orig'], km_fake_fin, active_sers).items():
                         ser_accum_1[s_name] += e_val
                         
                 vacio_kwh_total += e_pant_vacio
@@ -433,7 +425,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    st.plotly_chart(draw_diagram(df_act, {k: max(0.0, v) for k, v in ser_accum_1.items()}, seat_accum_1, hora_s1, "", active_sers, gap_vias), use_container_width=True)
+    st.markdown(draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_1.items()}, seat_accum_1, hora_s1, "", active_sers, gap_vias), unsafe_allow_html=True)
 
     st.divider()
     n_circ = len(df_act) if not df_act.empty else 0
@@ -486,13 +478,13 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             
             if dem_kw == 0.0 and dem_kw_bruta < -10.0:
                 color_bar = "#9E9E9E" 
-                texto_estado = "Bloqueo Diodos (Quemando en Reóstato)"
+                texto_estado = "Bloqueo Diodos (Reóstato)"
             elif vdc_actual < 2600.0:
                 color_bar = "#C62828"
-                texto_estado = "⚠️ SQUEEZE CONTROL (Bajo Voltaje)"
+                texto_estado = "⚠️ SQUEEZE CONTROL"
             elif vdc_actual < 2850.0:
                 color_bar = "#F9A825"
-                texto_estado = "Estrés Moderado (Caída AC)"
+                texto_estado = "Estrés Moderado"
             elif pct_carga <= 65:
                 color_bar = "#1565C0"
                 texto_estado = "Carga Óptima"
@@ -507,7 +499,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                             f"<span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br>"
                             f"<span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
                 st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
-                st.markdown(f"<span style='font-size:11px; color:#666;'>Factor Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-size:11px; color:#666;'>Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
 
     df_comp = df_dia_e[df_dia_e['t_fin']<=hora_m1]
     df_inic = df_dia_e[df_dia_e['t_ini']<=hora_m1]
@@ -630,7 +622,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         if prefix_key == "mapa":
             st.divider()
             st.markdown("#### 🚉 Maniobras en Vacío (Patio y Línea Principal)")
-            st.caption("Consumo físico por tránsitos no comerciales. Combina movimientos en patio a 20 km/h y tránsitos en Vía Principal. *La energía ya está sumada a la demanda total de las SERs.*")
             v1, v2, v3 = st.columns(3)
             v1.metric("Maniobras en Vacío Efectuadas", vacio_count)
             v2.metric("Kilometraje Improductivo", f"{vacio_km_total:,.2f} Tren-km")
@@ -643,8 +634,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             with st.expander("📊 Resumen de Energía del Día y Comportamiento de Subestaciones", expanded=True):
 
                 st.markdown("### 🚄 Auditoría de Consumo Operativo")
-                st.caption("Análisis termodinámico detallado. Evalúa el costo energético directo separando el impacto de la tecnología (Flota) y la geografía (Trayecto).")
-
                 if not df_dia_e.empty:
                     def agrupar_energia(df_group):
                         res = df_group.agg(
@@ -693,16 +682,15 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                     st.dataframe(res_flota, use_container_width=True)
 
                     st.markdown("##### 🔀 Matriz Detallada: Trayectos vs Flota (Auditoría Ejecutiva con IDE)")
-                    st.caption("Desglose exacto de cuántos trenes de cada familia operaron un trayecto específico, su consumo total en esa ruta, el promedio unitario y su eficiencia kilométrica (IDE).")
                     st.dataframe(df_pivot, use_container_width=True)
 
                 st.divider()
                 st.markdown("### Requerimientos Aguas Arriba (SER & SEAT)")
                 sr1, sr2 = st.columns(2)
                 with sr1:
-                    st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh** \n*Considera el despacho geográfico de energía y caída de tensión dinámica a 3000 Vcc.*")
+                    st.info(f"**Demanda en bornes de las SER Activas (a 44 kV): {total_ser_kwh_44kv:,.0f} kWh**")
                 with sr2:
-                    st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh** \n*Considera pérdidas dinámicas de transmisión AC 44kV (I²R) integradas y eficiencia del transformador de potencia (99%).*")
+                    st.error(f"**Inyección Total SEAT 110/44kV (Tracción Bruta): {seat_accum_1:,.0f} kWh**")
 
                 fig_pie = go.Figure(data=[go.Pie(
                     labels=['Tracción', 'Auxiliar', 'Regeneración Útil', 'Pérdida Reóstato'], 
