@@ -9,49 +9,53 @@ from red_electrica import calcular_flujo_ac_nodo, distribuir_potencia_sers_kw, d
 from motor_fisico import km_at_t, vel_at_km, get_train_state_and_speed, calcular_aux_dinamico, simular_tramo_termodinamico
 
 # =============================================================================
-# MOTOR VISUAL 60 FPS (INYECCIÓN DOM - SVG)
+# MOTOR VISUAL 60 FPS (INYECCIÓN DOM - SVG TOPOGRÁFICO)
 # =============================================================================
 def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, titulo_extra="", active_sers_list=SER_DATA, gap_vias=200):
     W = 1200
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
-    Y_V2 = 260
-    Y_V1 = Y_V2 - gap_vias
-    MARGIN_TOP = 90
-    MARGIN_BOT = 150
-    Y_44KV = Y_V2 + 90
-    Y_SER = Y_V2 + 40
-    y_min = Y_V1 - MARGIN_TOP
-    y_max = Y_V2 + MARGIN_BOT
-    H = int(y_max - y_min)
+    # Coordenadas Corregidas (SVG Y-Axis: 0 es el techo, H es el suelo)
+    Y_44KV = 80
+    Y_SER = 130
+    Y_V2 = 180
+    Y_V1 = Y_V2 + gap_vias
+    y_min = 0
+    y_max = Y_V1 + 90
+    H = y_max
     y_mid = (Y_V1 + Y_V2) / 2
 
     svg = f'''
     <svg width="100%" height="{H}" viewBox="0 {y_min} {W} {H}" xmlns="http://www.w3.org/2000/svg" style="background-color: white; font-family: sans-serif; border-radius: 8px; border: 1px solid #ddd; display: block; margin-bottom: 20px;">
-        <text x="{W/2}" y="{y_min + 20}" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
+        <text x="{W/2}" y="30" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
         
+        <!-- Pistas Físicas -->
         <line x1="0" y1="{Y_V2}" x2="{W}" y2="{Y_V2}" stroke="#c62828" stroke-width="5" />
         <line x1="0" y1="{Y_V1}" x2="{W}" y2="{Y_V1}" stroke="#1565c0" stroke-width="5" />
         
+        <!-- Línea Troncal 44kV -->
         <line x1="0" y1="{Y_44KV}" x2="{W}" y2="{Y_44KV}" stroke="#FBC02D" stroke-width="3" stroke-dasharray="10,5" />
-        <text x="{W/2}" y="{Y_44KV+12}" font-size="10" font-weight="bold" fill="#FBC02D" text-anchor="middle">Línea AC 44kV</text>
+        <text x="{W/2}" y="{Y_44KV-10}" font-size="10" font-weight="bold" fill="#FBC02D" text-anchor="middle">Línea AC 44kV</text>
     '''
 
+    # Estaciones (Líneas divisorias verticales)
     for i, (ec, km) in enumerate(zip(EC, KM_ACUM[:N_EST])):
         xp = xkm(km)
         y_ec = y_mid + (15 if i % 2 == 0 else -15)
-        svg += f'<line x1="{xp}" y1="{Y_V1-20}" x2="{xp}" y2="{Y_V2+20}" stroke="#bbb" stroke-width="1" stroke-dasharray="2,2" />'
+        svg += f'<line x1="{xp}" y1="{Y_V2-20}" x2="{xp}" y2="{Y_V1+20}" stroke="#bbb" stroke-width="1" stroke-dasharray="2,2" />'
         svg += f'<text x="{xp}" y="{y_ec}" font-size="9" font-weight="bold" fill="#555" text-anchor="middle" dominant-baseline="middle">{ec}</text>'
 
+    # SEAT El Sol (Inyección Principal)
     seat_x = xkm(SEAT_KM)
     svg += f'''
-        <polygon points="{seat_x},{Y_44KV+20} {seat_x-10},{Y_44KV+40} {seat_x+10},{Y_44KV+40}" fill="#FBC02D" stroke="black" stroke-width="1" />
-        <text x="{seat_x}" y="{Y_44KV+55}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">⚡ SEAT EL SOL</text>
-        <text x="{seat_x}" y="{Y_44KV+68}" font-size="10" fill="#111" text-anchor="middle">{seat_accum_plot:,.0f} kWh</text>
-        <line x1="{seat_x}" y1="{Y_44KV+20}" x2="{seat_x}" y2="{Y_44KV}" stroke="#FBC02D" stroke-width="4" />
+        <polygon points="{seat_x},{Y_44KV-30} {seat_x-12},{Y_44KV-10} {seat_x+12},{Y_44KV-10}" fill="#FBC02D" stroke="black" stroke-width="1" />
+        <text x="{seat_x}" y="{Y_44KV-45}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">⚡ SEAT EL SOL</text>
+        <text x="{seat_x}" y="{Y_44KV-33}" font-size="10" fill="#111" text-anchor="middle">{seat_accum_plot:,.0f} kWh</text>
+        <line x1="{seat_x}" y1="{Y_44KV-10}" x2="{seat_x}" y2="{Y_44KV}" stroke="#FBC02D" stroke-width="4" />
     '''
 
+    # Subestaciones Rectificadoras (SERs)
     active_names = [s[1] for s in active_sers_list]
     for skm, nombre_ser in SER_DATA:
         xp = xkm(skm)
@@ -61,7 +65,10 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
         if is_active:
             color, fill, txt_color = "#FBC02D", "#FFF3E0", "#E65100"
             status_lbl = f"{val:,.0f} kWh"
-            svg += f'<line x1="{xp}" y1="{Y_SER-15}" x2="{xp}" y2="{Y_V1}" stroke="#E65100" stroke-width="2" />'
+            # Conexión SER -> Catenaria V2
+            svg += f'<line x1="{xp}" y1="{Y_SER+15}" x2="{xp}" y2="{Y_V2}" stroke="#E65100" stroke-width="2" />'
+            # Conexión SER -> Catenaria V1 (Cruza V2 visualmente)
+            svg += f'<line x1="{xp}" y1="{Y_V2}" x2="{xp}" y2="{Y_V1}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,4" />'
             dash = ""
         else:
             color, fill, txt_color = "#9E9E9E", "#F5F5F5", "#757575"
@@ -69,11 +76,14 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
             svg += f'<text x="{xp}" y="{Y_SER-25}" font-size="10" font-weight="bold" fill="red" text-anchor="middle">❌ FALLA</text>'
             dash = 'stroke-dasharray="5,5"'
 
-        svg += f'<line x1="{xp}" y1="{Y_44KV}" x2="{xp}" y2="{Y_SER+15}" stroke="{color}" stroke-width="2" {dash}/>'
+        # Conexión 44kV -> SER
+        svg += f'<line x1="{xp}" y1="{Y_44KV}" x2="{xp}" y2="{Y_SER-15}" stroke="{color}" stroke-width="2" {dash}/>'
+        # Caja de la SER
         svg += f'<rect x="{xp-30}" y="{Y_SER-15}" width="60" height="30" fill="{fill}" stroke="{color}" stroke-width="2" rx="4" />'
         svg += f'<text x="{xp}" y="{Y_SER-2}" font-size="10" font-weight="bold" fill="{txt_color}" text-anchor="middle">{nombre_ser}</text>'
         svg += f'<text x="{xp}" y="{Y_SER+10}" font-size="9" fill="{txt_color}" text-anchor="middle">{status_lbl}</text>'
 
+    # Trenes en Movimiento
     if not df_act_plot.empty:
         COLL_PX = 100
         label_side = {}
@@ -116,30 +126,42 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
             sep_r = row.get('sep_next', '—')
             sep_s = f"↔ {sep_r} min" if sep_r != '—' else ''
 
+            # Lógica de evasión de colisiones visuales (Top/Bottom logic corrected for SVG Y-Down)
             side = label_side.get(idx, 'up')
-            dy_mot = +(r_c + 20) if side == 'up' else -(r_c + 20)
-            dy_svc = -(r_c + 15) if side == 'up' else +(r_c + 15)
-            dy_sep = -(r_c + 32) if side == 'up' else +(r_c + 32)
+            if via == 2:
+                base_dy = -r_c - 16
+                if side == 'down': base_dy -= 28 
+            else:
+                base_dy = r_c + 16
+                if side == 'down': base_dy += 28
 
-            safe_tooltip = row.get("tooltip", "").replace("\n", "&#10;").replace("<b>", "").replace("</b>", "")
+            safe_tooltip = str(row.get("tooltip", "")).replace("<br>", "&#10;").replace("<b>", "").replace("</b>", "")
+            
+            # Dibujar Tren (Círculo interactivo)
             svg += f'<circle cx="{xp}" cy="{y_ln}" r="{r_c}" fill="{color}" stroke="black" stroke-width="2"><title>{safe_tooltip}</title></circle>'
             
-            svg += f'<rect x="{xp-40}" y="{y_ln+dy_mot-10}" width="80" height="14" fill="white" fill-opacity="0.8" rx="2" />'
-            svg += f'<text x="{xp}" y="{y_ln+dy_mot}" font-size="11" font-weight="bold" fill="#111" text-anchor="middle">{xt_lbl}</text>'
+            # Caja de texto (Servicio y Flota)
+            svg += f'<rect x="{xp-45}" y="{y_ln+base_dy-12}" width="90" height="24" fill="white" fill-opacity="0.85" rx="3" stroke="#ccc" stroke-width="1"/>'
+            svg += f'<text x="{xp}" y="{y_ln+base_dy-2}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">{xt_lbl}</text>'
+            svg += f'<text x="{xp}" y="{y_ln+base_dy+9}" font-size="9" font-weight="bold" fill="#111" text-anchor="middle">Serv. {serv}</text>'
             
-            svg += f'<rect x="{xp-30}" y="{y_ln+dy_svc-10}" width="60" height="12" fill="white" fill-opacity="0.8" rx="2" />'
-            svg += f'<text x="{xp}" y="{y_ln+dy_svc}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">Serv. {serv}</text>'
+            # Textos laterales de Energía y Pasajeros
+            svg += f'<text x="{xp - r_c - 6}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#2E7D32" text-anchor="end">{kwh_n:.0f} kWh</text>'
+            svg += f'<text x="{xp + r_c + 6}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#1565c0" text-anchor="start">{pax_v} pax</text>'
             
-            svg += f'<text x="{xp - r_c - 5}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#2E7D32" text-anchor="end">{kwh_n:.0f} kWh</text>'
-            svg += f'<text x="{xp + r_c + 5}" y="{y_ln+3}" font-size="10" font-weight="bold" fill="#1565c0" text-anchor="start">{pax_v} pax</text>'
-            
+            # Distancia al próximo tren
             if sep_s:
-                svg += f'<text x="{xp}" y="{y_ln+dy_sep}" font-size="11" font-weight="bold" fill="#111" text-anchor="middle">{sep_s}</text>'
+                sep_dy = base_dy - 22 if via == 2 else base_dy + 22
+                svg += f'<text x="{xp}" y="{y_ln+sep_dy}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">{sep_s}</text>'
 
     svg += '</svg>'
-    # REGLA DE ORO DE MARKDOWN: Eliminar todos los saltos de línea para inyectar como HTML atómico
+    
+    # MUY IMPORTANTE: Se minifica el string (quita saltos de línea) para que Streamlit Markdown no lo rompa
     return svg.replace('\n', '')
 
+# =============================================================================
+# TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
+# =============================================================================
 def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
     if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
     t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
@@ -175,10 +197,12 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if 'maniobra' not in df_dia.columns: df_dia['maniobra'] = None
     if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
     
-    slider_key = f"sl_ui_{prefix_key}"
-    
-    if slider_key not in st.session_state: 
-        st.session_state[slider_key] = 480.0
+    # -------------------------------------------------------------------------
+    # DESACOPLE DE ESTADO: Solución para el "Deadlock" de Streamlit
+    # -------------------------------------------------------------------------
+    time_key = f"t_math_{prefix_key}"
+    if time_key not in st.session_state: 
+        st.session_state[time_key] = 480.0
     if f'play_{prefix_key}' not in st.session_state: 
         st.session_state[f'play_{prefix_key}'] = False
         
@@ -189,28 +213,32 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if modo != "▶️ Animado": 
         st.session_state[f'play_{prefix_key}'] = False
 
-    # LÓGICA DE INYECCIÓN DIRECTA PARA ANIMACIÓN FLUIDA
+    # Lógica Matemática que empuja el reloj (Forzada por el Script)
     if st.session_state[f'play_{prefix_key}']:
         speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        new_val = st.session_state[slider_key] + (0.2 * speed)
-        if new_val >= 1439.0:
-            st.session_state[slider_key] = 1439.0
+        st.session_state[time_key] = min(1439.0, st.session_state[time_key] + (0.2 * speed))
+        if st.session_state[time_key] >= 1439.0:
             st.session_state[f'play_{prefix_key}'] = False
-        else:
-            st.session_state[slider_key] = new_val
 
     c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
-    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
-    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
+    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
+    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 1.0)
     if modo == "▶️ Animado":
         if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
             st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
             st.rerun()
-    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
-    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
+    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
+    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
 
-    # El slider usa `st.session_state[slider_key]` automáticamente
-    hora_m1 = st.slider("Timeline", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
+    # El Slider ya no gobierna el bucle. Ahora el Slider simplemente OBEDECE a `time_key`
+    # Si el usuario lo arrastra manualmente (cuando está en Pausa), capturamos su valor de retorno.
+    user_val = st.slider("Timeline", min_value=0.0, max_value=1439.0, value=float(st.session_state[time_key]), step=0.1)
+    
+    # Sincronización Inversa: Solo si no está reproduciéndose, guardamos el arrastre del usuario
+    if not st.session_state[f'play_{prefix_key}']:
+        st.session_state[time_key] = user_val
+
+    hora_m1 = st.session_state[time_key]
     hora_s1 = mins_to_time_str(hora_m1)
 
     if modo == "▶️ Animado":
@@ -424,7 +452,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    # INYECCIÓN FINAL DE SVG (CON FIX DE MARKDOWN PARA RENDERIZADO REACTIVO)
+    # INYECCIÓN FINAL DE SVG (YA NO HAY SALTO DE LÍNEA. ORIENTACIÓN TOPOGRÁFICA CORREGIDA)
     st.markdown(draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias), unsafe_allow_html=True)
 
     st.divider()
@@ -721,5 +749,5 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 with ec2: st.plotly_chart(fig_hora, use_container_width=True)
 
         if st.session_state[f'play_{prefix_key}']:
-            time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
+            time.sleep(max(0.02, 0.2 / speed))
             st.rerun()
