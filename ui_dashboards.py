@@ -65,7 +65,9 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
         if is_active:
             color, fill, txt_color = "#FBC02D", "#FFF3E0", "#E65100"
             status_lbl = f"{val:,.0f} kWh"
+            # Conexión SER -> Catenaria V2
             svg += f'<line x1="{xp}" y1="{Y_SER+15}" x2="{xp}" y2="{Y_V2}" stroke="#E65100" stroke-width="2" />'
+            # Conexión SER -> Catenaria V1 (Cruza V2 visualmente)
             svg += f'<line x1="{xp}" y1="{Y_V2}" x2="{xp}" y2="{Y_V1}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,4" />'
             dash = ""
         else:
@@ -74,7 +76,9 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
             svg += f'<text x="{xp}" y="{Y_SER-25}" font-size="10" font-weight="bold" fill="red" text-anchor="middle">❌ FALLA</text>'
             dash = 'stroke-dasharray="5,5"'
 
+        # Conexión 44kV -> SER
         svg += f'<line x1="{xp}" y1="{Y_44KV}" x2="{xp}" y2="{Y_SER-15}" stroke="{color}" stroke-width="2" {dash}/>'
+        # Caja de la SER
         svg += f'<rect x="{xp-30}" y="{Y_SER-15}" width="60" height="30" fill="{fill}" stroke="{color}" stroke-width="2" rx="4" />'
         svg += f'<text x="{xp}" y="{Y_SER-2}" font-size="10" font-weight="bold" fill="{txt_color}" text-anchor="middle">{nombre_ser}</text>'
         svg += f'<text x="{xp}" y="{Y_SER+10}" font-size="9" fill="{txt_color}" text-anchor="middle">{status_lbl}</text>'
@@ -149,20 +153,17 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
     return svg.replace('\n', ''), H
 
 # =============================================================================
-# MOTOR VISUAL 2: SCADA JAVASCRIPT (CLIENT-SIDE RENDERING + DINÁMICA DE PAX)
+# MOTOR VISUAL 2: SCADA JAVASCRIPT (CLIENT-SIDE RENDERING + POPUPS)
 # =============================================================================
 def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titulo_extra, active_sers_list, gap_vias, use_rm):
     """
     Empaqueta el perfil matemático y genera el Iframe HTML.
-    JS lee el JSON e interpola las posiciones y los *pasajeros dinámicos* a 60 FPS.
+    JS lee el JSON e interpola las posiciones, tooltips y *pasajeros dinámicos* a 60 FPS.
     """
     trips_data = []
     
-    # 1. Empaquetar Cinématica y Vectores de Carga
     for _, row in df_dia_e.iterrows():
         t_ini, t_fin = float(row['t_ini']), float(row['t_fin'])
-        
-        # Muestreo posicional
         t_points = np.arange(t_ini, t_fin + 0.5, 0.5)
         if t_points[-1] < t_fin: t_points = np.append(t_points, t_fin)
             
@@ -171,7 +172,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             km = km_at_t(row['t_ini'], row['t_fin'], t, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
             traj.append([round(t, 2), round(km, 3)])
             
-        # Extracción segura del diccionario de Pax
         pax_dict = row.get('pax_d', {})
         if isinstance(pax_dict, dict) and pax_dict:
             pax_arr = [int(pax_dict.get(c, 0)) for c in PAX_COLS]
@@ -188,18 +188,16 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             'tipo': str(row.get('tipo_tren', 'XT-100')),
             'doble': bool(row.get('doble', False)),
             'kwh_total': float(row.get('kwh_viaje_neto', 0)),
-            'pax_arr': pax_arr, # Inyectado para cálculo JS entre estaciones
+            'pax_arr': pax_arr,
             'traj': traj
         })
         
     json_data = json.dumps(trips_data)
     json_km_acum = json.dumps(KM_ACUM[:N_EST])
     
-    # 2. Generación del Mapa Base Estático
     svg_bg, H = draw_diagram_svg(pd.DataFrame(), ser_accum_plot, seat_accum_plot, "Modo SCADA Activo", titulo_extra, active_sers_list, gap_vias)
     svg_bg = svg_bg.replace('</svg>', '<g id="trains_layer"></g></svg>') 
     
-    # 3. Lógica JavaScript de Renderizado Local
     js_code = """
     const trips = JSON_DATA_HERE;
     const KM_ACUM = KM_ACUM_HERE;
@@ -239,7 +237,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         return traj[0][1];
     }
     
-    // Función SCADA: Calcula los pasajeros a bordo en base a la coordenada exacta
     function getPaxAtKm(pax_arr, km, via) {
         let pax = 0;
         if (via === 1) {
@@ -267,14 +264,10 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             let color = tr.Via === 2 ? '#c62828' : '#1565c0';
             let r_c = tr.doble ? 18 : 11;
             
-            // Dinámica Termodinámica (Regla de Tres lineal básica para lo visual)
             let frac = (currentTime - tr.t_ini) / Math.max(0.001, (tr.t_fin - tr.t_ini));
             let current_kwh = tr.kwh_total * frac;
-            
-            // Carga Dinámica de Pasajeros (Entre Estaciones)
             let current_pax = getPaxAtKm(tr.pax_arr, km, tr.Via);
             
-            // Alternancia visual anti-colisión
             let base_dy = tr.Via === 2 ? (-r_c - 16) : (r_c + 16);
             if (index % 2 !== 0) {
                 base_dy = tr.Via === 2 ? base_dy - 28 : base_dy + 28;
@@ -283,7 +276,10 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             let lbl = tr.tipo === 'SFE' ? 'SFE' : (tr.tipo === 'XT-M' ? 'Modular' : 'XT-100');
             if (tr.motriz) lbl += ' [' + tr.motriz + ']';
             
-            html += `<circle cx="${xp}" cy="${y_ln}" r="${r_c}" fill="${color}" stroke="black" stroke-width="2"/>`;
+            // INYECCIÓN DE POPUP (TOOLTIP) NATIVO SVG
+            let safe_tooltip = `Tren: ${lbl} (Serv. ${tr.svc})&#10;Vía ${tr.Via} | km ${km.toFixed(2)}&#10;Pasajeros a Bordo: ${current_pax} pax&#10;Energía Neta: ${Math.round(current_kwh)} kWh`;
+            
+            html += `<circle cx="${xp}" cy="${y_ln}" r="${r_c}" fill="${color}" stroke="black" stroke-width="2"><title>${safe_tooltip}</title></circle>`;
             html += `<rect x="${xp-45}" y="${y_ln+base_dy-12}" width="90" height="24" fill="white" fill-opacity="0.9" rx="3" stroke="#ccc"/>`;
             html += `<text x="${xp}" y="${y_ln+base_dy-2}" font-size="10" font-weight="bold" fill="#111" text-anchor="middle">${lbl}</text>`;
             html += `<text x="${xp}" y="${y_ln+base_dy+9}" font-size="9" font-weight="bold" fill="#111" text-anchor="middle">Serv. ${tr.svc}</text>`;
@@ -302,7 +298,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         
         if (playing) {
             let speed = parseFloat(speedSelect.value);
-            // Matemáticas de Frame (1 sec real = 1 minuto sim * velocidad)
             let deltaMins = (deltaTime / 1000) * speed; 
             currentTime += deltaMins;
             if (currentTime >= 1439.0) {
@@ -329,7 +324,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
-    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -380,34 +374,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
     return html_template, H
 
 # =============================================================================
-# TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
-# =============================================================================
-def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
-    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
-    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
-    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
-    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
-    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
-    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
-    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
-    regen_bruta = t_regen + t_reostat
-    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
-    ide_global  = t_neto/max(0.1, tren_km_t)
-    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
-    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
-
-    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
-    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
-    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
-    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
-    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
-    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
-    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
-    st.divider()
-
-# =============================================================================
 # ORQUESTADOR CENTRAL: GEMELO DIGITAL
 # =============================================================================
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0, df_vacios_real=None):
@@ -418,316 +384,296 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
     
     slider_key = f"sl_ui_{prefix_key}"
+    time_key = f"t_math_{prefix_key}"
+    
     if slider_key not in st.session_state: 
         st.session_state[slider_key] = 480.0
+    if time_key not in st.session_state: 
+        st.session_state[time_key] = 480.0
+    if f'play_{prefix_key}' not in st.session_state: 
+        st.session_state[f'play_{prefix_key}'] = False
         
     cf, cm = st.columns([3,2])
     with cm: 
         modo = st.radio("Motor de Renderizado", ["🔒 Analítico (Estático)", "🚀 SCADA (JS 60FPS)"], horizontal=True, key=f"modo_{prefix_key}")
 
+    if modo != "▶️ Animado" and "SCADA" not in modo: 
+        st.session_state[f'play_{prefix_key}'] = False
+
+    if st.session_state[f'play_{prefix_key}']:
+        speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
+        new_val = st.session_state[time_key] + (0.5 * speed) 
+        if new_val >= 1439.0:
+            st.session_state[time_key] = 1439.0
+            st.session_state[f'play_{prefix_key}'] = False
+        else:
+            st.session_state[time_key] = new_val
+
     # =========================================================================
-    # BIFURCACIÓN DE RENDERIZADO: SCADA vs PYTHON
+    # LÓGICA DE TIEMPO COMPARTIDA
+    # =========================================================================
+    if "SCADA" not in modo:
+        c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
+        if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
+        if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 1.0)
+        if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
+            st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
+            st.rerun() 
+        if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
+        if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
+
+        def sync_time():
+            st.session_state[time_key] = st.session_state[slider_key]
+
+        st.slider("Timeline", min_value=0.0, max_value=1439.0, 
+                  value=float(st.session_state[time_key]), 
+                  step=0.1, key=slider_key, on_change=sync_time)
+
+    hora_m1 = st.session_state[time_key]
+    hora_s1 = mins_to_time_str(hora_m1)
+
+    # =========================================================================
+    # 1. CÁLCULO FÍSICO INSTANTÁNEO (Común para ambos modos)
+    # =========================================================================
+    df_act = df_dia_e[(df_dia_e['t_ini'] <= hora_m1) & (df_dia_e['t_fin'] > hora_m1)].copy()
+    instant_ser_demands_kw = {s[1]: 0.0 for s in active_sers}
+    
+    if not df_act.empty:
+        frac_act = (hora_m1 - df_act['t_ini']) / np.maximum(0.001, df_act['t_fin'] - df_act['t_ini'])
+        df_act['kwh_neto'] = df_act['kwh_viaje_neto'] * frac_act
+        df_act['km_pos'] = df_act.apply(lambda r: km_at_t(r['t_ini'], r['t_fin'], hora_m1, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos')), axis=1)
+        
+        def _vel_real(r):
+            km_now = r['km_pos']
+            km_next = km_at_t(r['t_ini'], r['t_fin'], hora_m1 + 0.01, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
+            if abs(km_next - km_now) < 0.0001: return 0.0 
+            return vel_at_km(km_now, r['Via'], use_rm)
+            
+        df_act['vel'] = df_act.apply(_vel_real, axis=1)
+        df_act['km_rec'] = df_act.apply(lambda r: max(0.0, abs(r['km_pos'] - r['km_orig'])), axis=1)
+        df_act['pax_inst'] = df_act.apply(lambda r: get_pax_at_km(r.get('pax_d', {}), r['km_pos'], r['Via'], r.get('pax_abordo', 0)), axis=1)
+
+        def _sep_next(row, df_via):
+            km = row['km_pos']; vel = row['vel']
+            if vel < 1: return '—'
+            ahead = df_via[df_via['km_pos'] > km] if row['Via'] == 1 else df_via[df_via['km_pos'] < km]
+            if ahead.empty: return '—'
+            d = abs(ahead['km_pos'] - km).min()
+            return f"{round(d/max(1, vel)*60,1)} min ({d:.1f} km)"
+        
+        df_act['sep_next'] = df_act.apply(lambda r: _sep_next(r, df_act[df_act['Via']==r['Via']].drop(index=r.name)), axis=1)
+
+        def _make_tooltip_and_power(row):
+            m_num = str(row.get('motriz_num', ''))
+            tipo = str(row.get('tipo_tren', 'XT-100'))
+            serv = str(row.get('num_servicio', ''))
+            
+            nombre_tren = f"{tipo}-{m_num}" if m_num else tipo
+            
+            doble_tramo = row.get('doble', False)
+            man = row.get('maniobra')
+            if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
+            elif man == 'ACOPLE_BTO': doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
+            elif man == 'CORTE_SA': doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
+            elif man == 'ACOPLE_SA': doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
+                
+            cab = f"Tren: {nombre_tren} (Serv. {serv}) | {'DOBLE' if doble_tramo else 'Simple'}\n"
+            cab += f"Vía {row['Via']} | km {row['km_pos']:.2f} | {int(row['vel'])} km/h\n"
+            
+            state, v_kmh = get_train_state_and_speed(hora_m1, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
+            state_icon = "Traccionando" if state == "ACCEL" else "Frenando (Regen)" if state == "BRAKE" else "Velocidad Crucero"
+            cab += f"Estado: {state_icon}\n"
+            
+            f_flota = FLOTA.get(tipo, FLOTA["XT-100"])
+            n_unidades = 2 if doble_tramo else 1
+            tara_base = (f_flota['tara_t'] + f_flota['m_iner_t']) * n_unidades
+            pax_v = int(row.get('pax_inst', 0))
+            masa_total = tara_base + ((pax_v * PAX_KG) / 1000.0)
+            
+            v_ms = v_kmh / 3.6
+            if n_unidades == 2: f_davis = (f_flota['davis_A'] * 2) + (f_flota['davis_B'] * 2 * v_kmh) + (f_flota['davis_C'] * 1.35 * (v_kmh**2))
+            else: f_davis = f_flota['davis_A'] + f_flota['davis_B'] * v_kmh + f_flota['davis_C'] * (v_kmh**2)
+            
+            p_aux_kw = calcular_aux_dinamico(f_flota['aux_kw'] * n_unidades, hora_m1 / 60.0, pax_v, f_flota.get('cap_max', 398) * n_unidades, estacion_anio, state)
+            eta_m = f_flota.get('eta_motor', 0.92)
+            
+            if state == "ACCEL": p_mech = f_flota['p_max_kw'] * n_unidades * (pct_trac / 100.0)
+            elif state == "CRUISE": p_mech = (f_davis * v_ms) / 1000.0
+            elif state == "BRAKE": p_mech = -f_flota.get('p_freno_max_kw', f_flota['p_max_kw']*1.2) * n_unidades * 0.6
+            else: p_mech = 0.0
+            
+            if p_mech > 0: p_elec_kw = (p_mech / eta_m) + p_aux_kw
+            elif p_mech < 0: p_elec_kw = (p_mech * ETA_REGEN_NETA) + p_aux_kw
+            else: p_elec_kw = p_aux_kw
+            
+            dist_kw = distribuir_potencia_sers_kw(p_elec_kw, row['km_pos'], active_sers)
+            for s_n, v_kw in dist_kw.items():
+                instant_ser_demands_kw[s_n] += v_kw
+            
+            cab += f"Pax a Bordo: {pax_v}\n"
+            cab += f"Masa Dinámica: {masa_total:.1f} t\n"
+            cab += f"Siguiente Tren: {row['sep_next']}"
+            return cab
+
+        df_act['tooltip'] = df_act.apply(_make_tooltip_and_power, axis=1)
+
+    # =========================================================================
+    # 2. CÁLCULO FÍSICO ACUMULADO (Común para ambos modos)
+    # =========================================================================
+    vacios_hasta_ahora = []
+    vacio_kwh_total = 0.0
+    vacio_km_total = 0.0
+    vacio_count = 0
+    energy_by_fleet = {'XT-100': 0.0, 'XT-M': 0.0, 'SFE': 0.0}
+    ser_accum_visual = {s[1]: 0.0 for s in active_sers}
+    
+    if not df_vacios_real.empty:
+        df_dia_v = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel]
+        vacios_hasta_ahora = [v for v in df_dia_v.to_dict('records') if v['t_asigned'] <= hora_m1]
+        vacio_count = len(vacios_hasta_ahora)
+        for v in vacios_hasta_ahora:
+            es_cochera = v.get('cochera', False)
+            dist_efe = v.get('dist', 0.0)
+            vacio_km_total += dist_efe + (1.0 if es_cochera else 0.0)
+            if es_cochera:
+                trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(v['tipo'], False, 25.3, 26.3, 1, pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True)
+                e_panto_a = trc_a + aux_a - reg_a
+                vacio_kwh_total += e_panto_a
+                energy_by_fleet[v['tipo']] += e_panto_a
+                if active_sers:
+                    for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, 25.3, 26.3, active_sers).items(): ser_accum_visual[s_name] += e_val
+            if dist_efe > 0.0:
+                trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(v['tipo'], False, v['km_orig'], v['km_dest'], v['Via'], pct_trac, use_rm, use_pend, None, {}, 0, None, None, estacion_anio, v['t_asigned'], True)
+                e_panto_b = trc_b + aux_b - reg_b
+                vacio_kwh_total += e_panto_b
+                energy_by_fleet[v['tipo']] += e_panto_b
+                if active_sers:
+                    for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, v['km_orig'], v['km_dest'], active_sers).items(): ser_accum_visual[s_name] += e_val
+    else:
+        vacios_dia = get_vacios_dia(df_dia)
+        for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
+            man, t_arr_bto, t_arr_sa = row['maniobra'], row['t_ini'] + (40.0 if row['Via'] == 1 else 20.0), row['t_ini'] + (47.0 if row['Via'] == 1 else 13.0)
+            if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            elif man == 'ACOPLE_BTO': vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+            elif man == 'CORTE_SA': vacios_dia.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+            elif man == 'ACOPLE_SA': vacios_dia.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': abs(KM_ACUM[18] - KM_ACUM[14]) + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+        vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
+        vacio_count = len(vacios_hasta_ahora)
+        vacio_km_total = sum(v['dist'] * (2 if v.get('doble', False) else 1) for v in vacios_hasta_ahora)
+        for v in vacios_hasta_ahora:
+            is_loc = (v.get('km_orig') == v.get('km_dest'))
+            km_f = v['km_orig'] + v['dist'] if is_loc else v['km_dest']
+            v_v = 1 if v['km_orig'] <= km_f else 2
+            trc_v, aux_v, reg_v, _, _, t_h_v = simular_tramo_termodinamico(v['tipo'], v.get('doble', False), v['km_orig'], km_f, v_v, pct_trac, use_rm, use_pend if not is_loc else False, None, {}, 0, 20.0 if is_loc else None, None, estacion_anio, v.get('t_asigned', 480.0), True)
+            e_p = trc_v + aux_v - reg_v
+            vacio_kwh_total += e_p
+            if active_sers:
+                for s_name, e_val in distribuir_energia_sers(e_p, t_h_v, v['km_orig'], km_f, active_sers).items(): ser_accum_visual[s_name] += e_val
+
+    t_regen_acum = 0.0
+    t_reostato_acum = 0.0
+
+    for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
+        t_eval = min(hora_m1, r['t_fin'])
+        frac = (t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini'])
+        km_now = km_at_t(r['t_ini'], r['t_fin'], t_eval, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
+        e_p_frac = (r['kwh_viaje_trac'] + r['kwh_viaje_aux'] - r['kwh_viaje_regen']) * frac
+        for s_name, e_val in distribuir_energia_sers(e_p_frac, (t_eval - r['t_ini']) / 60.0, r['km_orig'], km_now, active_sers).items(): ser_accum_visual[s_name] += e_val 
+
+    df_acum = df_dia_e[df_dia_e['t_ini'] <= hora_m1]
+    if not df_acum.empty:
+        t_regen_acum = df_acum['kwh_viaje_regen'].sum()
+        for f_type in ['XT-100', 'XT-M', 'SFE']:
+            sub = df_acum[df_acum['tipo_tren'] == f_type]
+            if not sub.empty: energy_by_fleet[f_type] += sub['kwh_viaje_neto'].sum()
+
+    tot_ser_44kv = sum(max(0.0, val) for val in ser_accum_visual.values()) / ETA_SER_RECTIFICADOR
+    t_elap = max(0.001, hora_m1 / 60.0)
+    avg_d = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap for k, v in ser_accum_visual.items()}
+    flujo_avg = calcular_flujo_ac_nodo(avg_d)
+    tot_loss = flujo_avg['P_loss_kw'] * (1.15**2) * t_elap
+    seat_1 = (tot_ser_44kv + tot_loss) / 0.99
+
+    # =========================================================================
+    # 3. RENDERIZADO VISUAL BIFURCADO (SCADA vs PYTHON)
     # =========================================================================
     if "SCADA" in modo:
-        # En modo SCADA, obtenemos el valor del slider solo para iniciar la animación donde la dejamos.
-        hora_m1 = st.session_state[slider_key]
-        
-        # Procesamos Vacíos para el fondo estático (La energía se calcula igual)
-        vacios_hasta_ahora = []
-        vacio_kwh_total = 0.0
-        vacio_km_total = 0.0
-        ser_accum_visual = {s[1]: 0.0 for s in active_sers}
-        
-        if not df_vacios_real.empty:
-            df_dia_v = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel]
-            vacios_hasta_ahora = [v for v in df_dia_v.to_dict('records') if v['t_asigned'] <= hora_m1]
-            for v in vacios_hasta_ahora:
-                es_cochera = v.get('cochera', False)
-                dist_efe = v.get('dist', 0.0)
-                vacio_km_total += dist_efe + (1.0 if es_cochera else 0.0)
-                if es_cochera:
-                    trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(v['tipo'], False, 25.3, 26.3, 1, pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True)
-                    e_panto_a = trc_a + aux_a - reg_a
-                    vacio_kwh_total += e_panto_a
-                    if active_sers:
-                        for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, 25.3, 26.3, active_sers).items(): ser_accum_visual[s_name] += e_val
-                if dist_efe > 0.0:
-                    trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(v['tipo'], False, v['km_orig'], v['km_dest'], v['Via'], pct_trac, use_rm, use_pend, None, {}, 0, None, None, estacion_anio, v['t_asigned'], True)
-                    e_panto_b = trc_b + aux_b - reg_b
-                    vacio_kwh_total += e_panto_b
-                    if active_sers:
-                        for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, v['km_orig'], v['km_dest'], active_sers).items(): ser_accum_visual[s_name] += e_val
-        else:
-            vacios_dia = get_vacios_dia(df_dia)
-            for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
-                man, t_arr_bto, t_arr_sa = row['maniobra'], row['t_ini'] + (40.0 if row['Via'] == 1 else 20.0), row['t_ini'] + (47.0 if row['Via'] == 1 else 13.0)
-                if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-                elif man == 'ACOPLE_BTO': vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-            vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
-            vacio_km_total = sum(v['dist'] * (2 if v.get('doble', False) else 1) for v in vacios_hasta_ahora)
-            for v in vacios_hasta_ahora:
-                is_loc = (v.get('km_orig') == v.get('km_dest'))
-                km_f = v['km_orig'] + v['dist'] if is_loc else v['km_dest']
-                v_v = 1 if v['km_orig'] <= km_f else 2
-                trc_v, aux_v, reg_v, _, _, t_h_v = simular_tramo_termodinamico(v['tipo'], v.get('doble', False), v['km_orig'], km_f, v_v, pct_trac, use_rm, use_pend if not is_loc else False, None, {}, 0, 20.0 if is_loc else None, None, estacion_anio, v.get('t_asigned', 480.0), True)
-                e_p = trc_v + aux_v - reg_v
-                vacio_kwh_total += e_p
-                if active_sers:
-                    for s_name, e_val in distribuir_energia_sers(e_p, t_h_v, v['km_orig'], km_f, active_sers).items(): ser_accum_visual[s_name] += e_val
-
-        for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
-            t_eval = min(hora_m1, r['t_fin'])
-            frac = (t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini'])
-            km_now = km_at_t(r['t_ini'], r['t_fin'], t_eval, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
-            e_p_frac = (r['kwh_viaje_trac'] + r['kwh_viaje_aux'] - r['kwh_viaje_regen']) * frac
-            t_h_frac = (t_eval - r['t_ini']) / 60.0
-            for s_name, e_val in distribuir_energia_sers(e_p_frac, t_h_frac, r['km_orig'], km_now, active_sers).items(): ser_accum_visual[s_name] += e_val 
-
-        tot_ser_44kv = sum(max(0.0, val) for val in ser_accum_visual.values()) / ETA_SER_RECTIFICADOR
-        t_elap = max(0.001, hora_m1 / 60.0)
-        avg_d = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap for k, v in ser_accum_visual.items()}
-        flujo_avg = calcular_flujo_ac_nodo(avg_d)
-        tot_loss = flujo_avg['P_loss_kw'] * (1.15**2) * t_elap
-        seat_1 = (tot_ser_44kv + tot_loss) / 0.99
-
-        # Inyección del Motor SCADA
         html_scada, H_scada = draw_scada_js(df_dia_e, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_1, hora_m1, "", active_sers, gap_vias, use_rm)
         components.html(html_scada, height=H_scada + 100)
-        st.info("💡 **Modo SCADA Activado:** La animación gráfica se procesa a 60 FPS en tu Computador. \n *Nota: Si deseas leer la Potencia Eléctrica al milímetro en tiempo real (Squeeze Control), cambia al Modo Analítico.*")
-        
+        st.info("💡 **Modo SCADA Activado:** La animación gráfica se procesa a 60 FPS en tu Computador. Pasa el cursor sobre los trenes para ver la termodinámica.")
     else:
-        # =========================================================================
-        # MODO ANALÍTICO ESTÁTICO (FÍSICA DETALLADA PYTHON)
-        # =========================================================================
-        c1,c2,c3,c4 = st.columns([1,1,1,3])
-        if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
-        if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
-        if c3.button("+1m", key=f"p1_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
-        if c4.button("+15m", key=f"p15_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
-
-        hora_m1 = st.slider("Línea de Tiempo Principal (Hora Fija de Evaluación)", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
-        hora_s1 = mins_to_time_str(hora_m1)
-
+        if st.session_state.get(f'vs1_{prefix_key}', 1.0) > 1.0:
+            st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
+        
         st.markdown(
             f"<span style='font-size:2.2rem;font-weight:700;letter-spacing:2px;'>⏱ {hora_s1[:5]}</span>"
             f"<span style='font-size:0.9rem;color:#666;'> &nbsp;·&nbsp; {fecha_sel} &nbsp;·&nbsp; "
             f"⚙️ {pct_trac}% Tracción</span>",
             unsafe_allow_html=True
         )
-
-        df_act = df_dia_e[(df_dia_e['t_ini'] <= hora_m1) & (df_dia_e['t_fin'] > hora_m1)].copy()
-        
-        instant_ser_demands_kw = {s[1]: 0.0 for s in active_sers}
-        ser_accum_visual = {s[1]: 0.0 for s in active_sers}
-        
-        if not df_act.empty:
-            frac_act = (hora_m1 - df_act['t_ini']) / np.maximum(0.001, df_act['t_fin'] - df_act['t_ini'])
-            df_act['kwh_neto'] = df_act['kwh_viaje_neto'] * frac_act
-            df_act['km_pos'] = df_act.apply(lambda r: km_at_t(r['t_ini'], r['t_fin'], hora_m1, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos')), axis=1)
-            
-            def _vel_real(r):
-                km_now = r['km_pos']
-                km_next = km_at_t(r['t_ini'], r['t_fin'], hora_m1 + 0.01, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
-                if abs(km_next - km_now) < 0.0001: return 0.0 
-                return vel_at_km(km_now, r['Via'], use_rm)
-                
-            df_act['vel'] = df_act.apply(_vel_real, axis=1)
-            df_act['km_rec'] = df_act.apply(lambda r: max(0.0, abs(r['km_pos'] - r['km_orig'])), axis=1)
-            df_act['pax_inst'] = df_act.apply(lambda r: get_pax_at_km(r.get('pax_d', {}), r['km_pos'], r['Via'], r.get('pax_abordo', 0)), axis=1)
-
-            def _sep_next(row, df_via):
-                km = row['km_pos']; vel = row['vel']
-                if vel < 1: return '—'
-                ahead = df_via[df_via['km_pos'] > km] if row['Via'] == 1 else df_via[df_via['km_pos'] < km]
-                if ahead.empty: return '—'
-                d = abs(ahead['km_pos'] - km).min()
-                return f"{round(d/max(1, vel)*60,1)} min ({d:.1f} km)"
-            
-            df_act['sep_next'] = df_act.apply(lambda r: _sep_next(r, df_act[df_act['Via']==r['Via']].drop(index=r.name)), axis=1)
-
-            def _make_tooltip_and_power(row):
-                m_num = str(row.get('motriz_num', ''))
-                tipo = str(row.get('tipo_tren', 'XT-100'))
-                serv = str(row.get('num_servicio', ''))
-                
-                nombre_tren = f"{tipo}-{m_num}" if m_num else tipo
-                
-                doble_tramo = row.get('doble', False)
-                man = row.get('maniobra')
-                if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: doble_tramo = True if row['km_pos'] <= KM_ACUM[14] else False
-                elif man == 'ACOPLE_BTO': doble_tramo = False if row['km_pos'] > KM_ACUM[14] else True
-                elif man == 'CORTE_SA': doble_tramo = True if row['km_pos'] <= KM_ACUM[18] else False
-                elif man == 'ACOPLE_SA': doble_tramo = False if row['km_pos'] > KM_ACUM[18] else True
-                    
-                cab = f"Tren: {nombre_tren} (Serv. {serv}) | {'DOBLE' if doble_tramo else 'Simple'}\n"
-                cab += f"Vía {row['Via']} | km {row['km_pos']:.2f} | {int(row['vel'])} km/h\n"
-                
-                state, v_kmh = get_train_state_and_speed(hora_m1, row['Via'], use_rm, row['km_orig'], row['km_dest'], row.get('nodos'))
-                state_icon = "Traccionando" if state == "ACCEL" else "Frenando (Regen)" if state == "BRAKE" else "Velocidad Crucero"
-                cab += f"Estado: {state_icon}\n"
-                
-                f_flota = FLOTA.get(tipo, FLOTA["XT-100"])
-                n_unidades = 2 if doble_tramo else 1
-                tara_base = (f_flota['tara_t'] + f_flota['m_iner_t']) * n_unidades
-                pax_v = int(row.get('pax_inst', 0))
-                masa_total = tara_base + ((pax_v * PAX_KG) / 1000.0)
-                
-                v_ms = v_kmh / 3.6
-                if n_unidades == 2: f_davis = (f_flota['davis_A'] * 2) + (f_flota['davis_B'] * 2 * v_kmh) + (f_flota['davis_C'] * 1.35 * (v_kmh**2))
-                else: f_davis = f_flota['davis_A'] + f_flota['davis_B'] * v_kmh + f_flota['davis_C'] * (v_kmh**2)
-                
-                p_aux_kw = calcular_aux_dinamico(f_flota['aux_kw'] * n_unidades, hora_m1 / 60.0, pax_v, f_flota.get('cap_max', 398) * n_unidades, estacion_anio, state)
-                eta_m = f_flota.get('eta_motor', 0.92)
-                
-                if state == "ACCEL": p_mech = f_flota['p_max_kw'] * n_unidades * (pct_trac / 100.0)
-                elif state == "CRUISE": p_mech = (f_davis * v_ms) / 1000.0
-                elif state == "BRAKE": p_mech = -f_flota.get('p_freno_max_kw', f_flota['p_max_kw']*1.2) * n_unidades * 0.6
-                else: p_mech = 0.0
-                
-                if p_mech > 0: p_elec_kw = (p_mech / eta_m) + p_aux_kw
-                elif p_mech < 0: p_elec_kw = (p_mech * ETA_REGEN_NETA) + p_aux_kw
-                else: p_elec_kw = p_aux_kw
-                
-                dist_kw = distribuir_potencia_sers_kw(p_elec_kw, row['km_pos'], active_sers)
-                for s_n, v_kw in dist_kw.items():
-                    instant_ser_demands_kw[s_n] += v_kw
-                
-                cab += f"Pax a Bordo: {pax_v}\n"
-                cab += f"Masa Dinámica: {masa_total:.1f} t\n"
-                cab += f"Siguiente Tren: {row['sep_next']}"
-                return cab
-
-            df_act['tooltip'] = df_act.apply(_make_tooltip_and_power, axis=1)
-
-        vacios_hasta_ahora = []
-        vacio_kwh_total = 0.0
-        vacio_km_total = 0.0
-        vacio_count = 0
-        energy_by_fleet = {'XT-100': 0.0, 'XT-M': 0.0, 'SFE': 0.0}
-        
-        if not df_vacios_real.empty:
-            df_dia_v = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel]
-            vacios_hasta_ahora = [v for v in df_dia_v.to_dict('records') if v['t_asigned'] <= hora_m1]
-            vacio_count = len(vacios_hasta_ahora)
-            for v in vacios_hasta_ahora:
-                es_cochera = v.get('cochera', False)
-                dist_efe = v.get('dist', 0.0)
-                vacio_km_total += dist_efe + (1.0 if es_cochera else 0.0)
-                if es_cochera:
-                    trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(v['tipo'], False, 25.3, 26.3, 1, pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True)
-                    e_panto_a = trc_a + aux_a - reg_a
-                    vacio_kwh_total += e_panto_a
-                    energy_by_fleet[v['tipo']] += e_panto_a
-                    if active_sers:
-                        for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, 25.3, 26.3, active_sers).items(): ser_accum_visual[s_name] += e_val
-                if dist_efe > 0.0:
-                    trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(v['tipo'], False, v['km_orig'], v['km_dest'], v['Via'], pct_trac, use_rm, use_pend, None, {}, 0, None, None, estacion_anio, v['t_asigned'], True)
-                    e_panto_b = trc_b + aux_b - reg_b
-                    vacio_kwh_total += e_panto_b
-                    energy_by_fleet[v['tipo']] += e_panto_b
-                    if active_sers:
-                        for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, v['km_orig'], v['km_dest'], active_sers).items(): ser_accum_visual[s_name] += e_val
-        else:
-            vacios_dia = get_vacios_dia(df_dia)
-            for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
-                man, t_arr_bto, t_arr_sa = row['maniobra'], row['t_ini'] + (40.0 if row['Via'] == 1 else 20.0), row['t_ini'] + (47.0 if row['Via'] == 1 else 13.0)
-                if man in ['CORTE_BTO', 'CORTE_PU_SA_BTO']: vacios_dia.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-                elif man == 'ACOPLE_BTO': vacios_dia.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
-            vacios_hasta_ahora = [v for v in vacios_dia if v['t_asigned'] <= hora_m1]
-            vacio_km_total = sum(v['dist'] * (2 if v.get('doble', False) else 1) for v in vacios_hasta_ahora)
-            for v in vacios_hasta_ahora:
-                is_loc = (v.get('km_orig') == v.get('km_dest'))
-                km_f = v['km_orig'] + v['dist'] if is_loc else v['km_dest']
-                v_v = 1 if v['km_orig'] <= km_f else 2
-                trc_v, aux_v, reg_v, _, _, t_h_v = simular_tramo_termodinamico(v['tipo'], v.get('doble', False), v['km_orig'], km_f, v_v, pct_trac, use_rm, use_pend if not is_loc else False, None, {}, 0, 20.0 if is_loc else None, None, estacion_anio, v.get('t_asigned', 480.0), True)
-                e_p = trc_v + aux_v - reg_v
-                vacio_kwh_total += e_p
-                if active_sers:
-                    for s_name, e_val in distribuir_energia_sers(e_p, t_h_v, v['km_orig'], km_f, active_sers).items(): ser_accum_visual[s_name] += e_val
-
-        t_regen_acum = 0.0
-        for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
-            t_eval = min(hora_m1, r['t_fin'])
-            frac = (t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini'])
-            km_now = km_at_t(r['t_ini'], r['t_fin'], t_eval, r['Via'], use_rm, r['km_orig'], r['km_dest'], r.get('nodos'))
-            e_p_frac = (r['kwh_viaje_trac'] + r['kwh_viaje_aux'] - r['kwh_viaje_regen']) * frac
-            for s_name, e_val in distribuir_energia_sers(e_p_frac, (t_eval - r['t_ini']) / 60.0, r['km_orig'], km_now, active_sers).items(): ser_accum_visual[s_name] += e_val 
-
-        df_acum = df_dia_e[df_dia_e['t_ini'] <= hora_m1]
-        if not df_acum.empty:
-            t_regen_acum = df_acum['kwh_viaje_regen'].sum()
-            for f_type in ['XT-100', 'XT-M', 'SFE']:
-                sub = df_acum[df_acum['tipo_tren'] == f_type]
-                if not sub.empty: energy_by_fleet[f_type] += sub['kwh_viaje_neto'].sum()
-
-        tot_ser_44kv = sum(max(0.0, val) for val in ser_accum_visual.values()) / ETA_SER_RECTIFICADOR
-        t_elap = max(0.001, hora_m1 / 60.0)
-        avg_d = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap for k, v in ser_accum_visual.items()}
-        flujo_avg = calcular_flujo_ac_nodo(avg_d)
-        tot_loss = flujo_avg['P_loss_kw'] * (1.15**2) * t_elap
-        seat_1 = (tot_ser_44kv + tot_loss) / 0.99
-
         svg_html, H_python = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_1, hora_s1[:5], "", active_sers, gap_vias)
         st.markdown(svg_html, unsafe_allow_html=True)
-        
-        n_circ = len(df_act) if not df_act.empty else 0
-        n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
-        n_v1   = int((df_act['Via']==1).sum()) if not df_act.empty else 0
-        n_v2   = int((df_act['Via']==2).sum()) if not df_act.empty else 0
-        pax_t  = int(df_act['pax_inst'].sum()) if not df_act.empty else 0
-        kwh_t  = round(df_act['kwh_neto'].sum(),0) if (not df_act.empty and 'kwh_neto' in df_act.columns) else 0
-        regen_t= round(t_regen_acum, 0)
-        trenkm = round(df_act['tren_km'].sum(),1) if (not df_act.empty and 'tren_km' in df_act.columns) else 0.0
-        km_rec = df_act['km_rec'].sum() if (not df_act.empty and 'km_rec' in df_act.columns) else 0
-        ide_i  = round(kwh_t/max(1, km_rec), 3) if km_rec > 0 else 0.0
 
-        st.divider()
-        st.markdown(f"#### 🕐 Monitor Instantáneo Dinámico")
-        r1a,r1b,r1c,r1d = st.columns(4)
-        r1a.metric("🚆 Servicios", n_circ)
-        r1b.metric("V1→Limache", n_v1)
-        r1c.metric("V2←Puerto", n_v2)
-        r1d.metric("🚈 Doble (Original)", n_d)
-        
-        r2a,r2b,r2c,r2d = st.columns(4)
-        r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{pax_t:,}")
-        r2b.metric("⚡ kWh neto", f"{kwh_t:,.0f}", f"−{regen_t:,.0f} regen util")
-        r2c.metric("📏 Tren-km Inst.", f"{trenkm:,.1f}")
-        r2d.metric("💡 IDE inst.", f"{ide_i:.3f} kWh/km")
+    # =========================================================================
+    # 4. PANELES DE DATOS (SIEMPRE VISIBLES PARA AMBOS MODOS)
+    # =========================================================================
+    n_circ = len(df_act) if not df_act.empty else 0
+    n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
+    n_v1   = int((df_act['Via']==1).sum()) if not df_act.empty else 0
+    n_v2   = int((df_act['Via']==2).sum()) if not df_act.empty else 0
+    pax_t  = int(df_act['pax_inst'].sum()) if not df_act.empty else 0
+    kwh_t  = round(df_act['kwh_neto'].sum(),0) if (not df_act.empty and 'kwh_neto' in df_act.columns) else 0
+    regen_t= round(t_regen_acum, 0)
+    trenkm = round(df_act['tren_km'].sum(),1) if (not df_act.empty and 'tren_km' in df_act.columns) else 0.0
+    km_rec = df_act['km_rec'].sum() if (not df_act.empty and 'km_rec' in df_act.columns) else 0
+    ide_i  = round(kwh_t/max(1, km_rec), 3) if km_rec > 0 else 0.0
 
-        st.divider()
-        st.markdown("#### 🔌 Cargabilidad Instantánea de Subestaciones (Squeeze Control)")
-        if not active_sers:
-            st.info("No hay SERs activas para monitorear.")
-        else:
-            flujo_ac_dc = calcular_flujo_ac_nodo(instant_ser_demands_kw)
-            st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas térmicas AC (I²R) de la red troncal en este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
-            cols_ser = st.columns(len(active_sers))
-            for i, ser_info in enumerate(active_sers):
-                s_name = ser_info[1]
-                cap_kw = SER_CAPACITY_KW.get(s_name, 3000.0)
-                dem_kw_bruta = instant_ser_demands_kw.get(s_name, 0.0)
-                dem_kw = max(0.0, dem_kw_bruta) 
-                vac_actual = flujo_ac_dc.get(s_name, {}).get('Vac', V_NOMINAL_AC)
-                vdc_actual = flujo_ac_dc.get(s_name, {}).get('Vdc', 3000.0)
-                pct_carga = (dem_kw / cap_kw) * 100.0
+    st.divider()
+    st.markdown(f"#### 🕐 Monitor Instantáneo Dinámico")
+    r1a,r1b,r1c,r1d = st.columns(4)
+    r1a.metric("🚆 Servicios", n_circ)
+    r1b.metric("V1→Limache", n_v1)
+    r1c.metric("V2←Puerto", n_v2)
+    r1d.metric("🚈 Doble (Original)", n_d)
+    
+    r2a,r2b,r2c,r2d = st.columns(4)
+    r2a.metric("🧑‍🤝‍🧑 Pax en Vía Inst.", f"{pax_t:,}")
+    r2b.metric("⚡ kWh neto", f"{kwh_t:,.0f}", f"−{regen_t:,.0f} regen util")
+    r2c.metric("📏 Tren-km Inst.", f"{trenkm:,.1f}")
+    r2d.metric("💡 IDE inst.", f"{ide_i:.3f} kWh/km")
+
+    st.divider()
+    st.markdown("#### 🔌 Cargabilidad Instantánea de Subestaciones (Squeeze Control)")
+    st.caption("Muestra la demanda real en kW que los trenes exigen a la red en este mismo segundo. Los rectificadores son unidireccionales (Diodos).")
+    
+    if not active_sers:
+        st.info("No hay SERs activas para monitorear.")
+    else:
+        flujo_ac_dc = calcular_flujo_ac_nodo(instant_ser_demands_kw)
+        st.markdown(f"<div style='text-align:right; font-size:12px; color:#c62828;'>🔥 Pérdidas térmicas AC (I²R) de la red troncal en este instante: <b>{flujo_ac_dc.get('P_loss_kw', 0.0):.1f} kW</b></div>", unsafe_allow_html=True)
+        cols_ser = st.columns(len(active_sers))
+        for i, ser_info in enumerate(active_sers):
+            s_name = ser_info[1]
+            cap_kw = SER_CAPACITY_KW.get(s_name, 3000.0)
+            dem_kw_bruta = instant_ser_demands_kw.get(s_name, 0.0)
+            dem_kw = max(0.0, dem_kw_bruta) 
+            vac_actual = flujo_ac_dc.get(s_name, {}).get('Vac', V_NOMINAL_AC)
+            vdc_actual = flujo_ac_dc.get(s_name, {}).get('Vdc', 3000.0)
+            pct_carga = (dem_kw / cap_kw) * 100.0
+            
+            if dem_kw == 0.0 and dem_kw_bruta < -10.0: color_bar, texto_estado = "#9E9E9E", "Bloqueo Diodos (Reóstato)"
+            elif vdc_actual < 2600.0: color_bar, texto_estado = "#C62828", "⚠️ SQUEEZE CONTROL"
+            elif vdc_actual < 2850.0: color_bar, texto_estado = "#F9A825", "Estrés Moderado (Caída AC)"
+            elif pct_carga <= 65: color_bar, texto_estado = "#1565C0", "Carga Óptima"
+            else: color_bar, texto_estado = "#F9A825", "Capacidad exigida"
                 
-                if dem_kw == 0.0 and dem_kw_bruta < -10.0: color_bar, texto_estado = "#9E9E9E", "Bloqueo Diodos"
-                elif vdc_actual < 2600.0: color_bar, texto_estado = "#C62828", "⚠️ SQUEEZE CONTROL"
-                elif vdc_actual < 2850.0: color_bar, texto_estado = "#F9A825", "Estrés Moderado"
-                elif pct_carga <= 65: color_bar, texto_estado = "#1565C0", "Carga Óptima"
-                else: color_bar, texto_estado = "#F9A825", "Capacidad exigida"
-                    
-                with cols_ser[i]:
-                    st.markdown(f"**{s_name}** ({cap_kw/1000:.1f} MVA)")
-                    st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='font-size:13px; font-family:monospace; margin-bottom:4px;'><span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br><span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='font-size:11px; color:#666;'>Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
+            with cols_ser[i]:
+                st.markdown(f"**{s_name}** ({cap_kw/1000:.1f} MVA)")
+                st.markdown(f"<div style='font-size:18px; font-weight:bold; color:{color_bar};'>{dem_kw:,.0f} kW</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:13px; font-family:monospace; margin-bottom:4px;'><span style='color:#666;'>Tensión AC:</span> <b>{vac_actual/1000:.2f} kV</b><br><span style='color:#666;'>Barra DC:</span> <b style='color:{color_bar};'>{vdc_actual:.0f} Vcc</b></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='width:100%; background-color:#e0e0e0; border-radius:4px; margin-bottom: 4px;'><div style='width:{min(100, max(0, pct_carga))}%; background-color:{color_bar}; height:8px; border-radius:4px;'></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-size:11px; color:#666;'>Uso: {pct_carga:.1f}% - {texto_estado}</span>", unsafe_allow_html=True)
 
-    # =========================================================================
-    # MÉTRICAS ACUMULADAS (SIEMPRE VISIBLES, REFLEJAN HORA_M1)
-    # =========================================================================
     df_comp = df_dia_e[df_dia_e['t_fin']<=hora_m1]
     df_inic = df_dia_e[df_dia_e['t_ini']<=hora_m1]
     n_inic  = len(df_inic)
@@ -846,7 +792,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         with a5: st.metric("🧑‍🤝‍🧑 Pax Despachados", f"{pax_ac:,}")
         with a6: st.metric("💡 IDE Promedio (SEAT)", f"{ide_ac:.3f} kWh/km")
 
-        if prefix_key == "mapa":
+        if prefix_key == "mapa" or prefix_key == "plan":
             st.divider()
             st.markdown("#### 🚉 Maniobras en Vacío (Cochera El Belloto y Transiciones)")
             st.caption("Consumo físico por tránsitos no comerciales. Incluye el carrusel a Velocidad de Consigna y restricción a 20 km/h en patios. *La energía ya está sumada a la demanda total de las SERs.*")
@@ -946,3 +892,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 ec1, ec2 = st.columns(2)
                 with ec1: st.plotly_chart(fig_pie, use_container_width=True)
                 with ec2: st.plotly_chart(fig_hora, use_container_width=True)
+
+        if st.session_state[f'play_{prefix_key}'] and "SCADA" not in modo:
+            time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
+            st.rerun()
