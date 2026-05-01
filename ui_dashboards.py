@@ -65,9 +65,7 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
         if is_active:
             color, fill, txt_color = "#FBC02D", "#FFF3E0", "#E65100"
             status_lbl = f"{val:,.0f} kWh"
-            # Conexión SER -> Catenaria V2
             svg += f'<line x1="{xp}" y1="{Y_SER+15}" x2="{xp}" y2="{Y_V2}" stroke="#E65100" stroke-width="2" />'
-            # Conexión SER -> Catenaria V1 (Cruza V2 visualmente)
             svg += f'<line x1="{xp}" y1="{Y_V2}" x2="{xp}" y2="{Y_V1}" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,4" />'
             dash = ""
         else:
@@ -76,9 +74,7 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
             svg += f'<text x="{xp}" y="{Y_SER-25}" font-size="10" font-weight="bold" fill="red" text-anchor="middle">❌ FALLA</text>'
             dash = 'stroke-dasharray="5,5"'
 
-        # Conexión 44kV -> SER
         svg += f'<line x1="{xp}" y1="{Y_44KV}" x2="{xp}" y2="{Y_SER-15}" stroke="{color}" stroke-width="2" {dash}/>'
-        # Caja de la SER
         svg += f'<rect x="{xp-30}" y="{Y_SER-15}" width="60" height="30" fill="{fill}" stroke="{color}" stroke-width="2" rx="4" />'
         svg += f'<text x="{xp}" y="{Y_SER-2}" font-size="10" font-weight="bold" fill="{txt_color}" text-anchor="middle">{nombre_ser}</text>'
         svg += f'<text x="{xp}" y="{Y_SER+10}" font-size="9" fill="{txt_color}" text-anchor="middle">{status_lbl}</text>'
@@ -373,6 +369,34 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
     </html>
     """
     return html_template, H
+
+# =============================================================================
+# TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
+# =============================================================================
+def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
+    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
+    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
+    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
+    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
+    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
+    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
+    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
+    regen_bruta = t_regen + t_reostat
+    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
+    ide_global  = t_neto/max(0.1, tren_km_t)
+    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
+    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
+
+    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
+    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
+    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
+    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
+    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
+    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
+    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
+    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
+    st.divider()
 
 # =============================================================================
 # ORQUESTADOR CENTRAL: GEMELO DIGITAL
@@ -689,27 +713,32 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             if col not in trayectos.columns:
                 trayectos[col] = 0
         
-        cols_svc_ac = st.columns(len(trayectos))
-        ci = 0
-        for (via, stype), row_counts in trayectos.iterrows():
-            total_t = row_counts.sum()
-            xt100_c = row_counts['XT-100']
-            xtm_c = row_counts['XT-M']
-            sfe_c = row_counts['SFE']
-            
-            color = "#1565C0" if via == 1 else "#c62828"
-            dot = "🔵" if via == 1 else "🔴"
-            
-            html_card = f"""
-            <div style='border-left: 4px solid {color}; padding-left: 10px; margin-bottom: 15px;'>
-                <span style='font-size:12px; color:#666; font-weight:bold;'>{dot} {stype}</span><br>
-                <span style='font-size:24px; font-weight:bold; color:#111;'>{total_t}</span><br>
-                <span style='font-size:11px; color:#555;'>XT-100: <b style='color:#111;'>{xt100_c}</b> | XT-M: <b style='color:#111;'>{xtm_c}</b> | SFE: <b style='color:#111;'>{sfe_c}</b></span>
-            </div>
-            """
-            if ci < len(cols_svc_ac):
-                cols_svc_ac[ci].markdown(html_card, unsafe_allow_html=True)
-            ci += 1
+        # 💡 SOLUCIÓN DEL BUG (Edge Case / NameError)
+        # Protegemos la creación de columnas para evitar fallos si el 'groupby' queda vacío temporalmente
+        if len(trayectos) > 0:
+            cols_svc_ac = st.columns(len(trayectos))
+            ci = 0
+            for (via, stype), row_counts in trayectos.iterrows():
+                total_t = row_counts.sum()
+                xt100_c = row_counts['XT-100']
+                xtm_c = row_counts['XT-M']
+                sfe_c = row_counts['SFE']
+                
+                color = "#1565C0" if via == 1 else "#c62828"
+                dot = "🔵" if via == 1 else "🔴"
+                
+                html_card = f"""
+                <div style='border-left: 4px solid {color}; padding-left: 10px; margin-bottom: 15px;'>
+                    <span style='font-size:12px; color:#666; font-weight:bold;'>{dot} {stype}</span><br>
+                    <span style='font-size:24px; font-weight:bold; color:#111;'>{total_t}</span><br>
+                    <span style='font-size:11px; color:#555;'>XT-100: <b style='color:#111;'>{xt100_c}</b> | XT-M: <b style='color:#111;'>{xtm_c}</b> | SFE: <b style='color:#111;'>{sfe_c}</b></span>
+                </div>
+                """
+                if ci < len(cols_svc_ac):
+                    cols_svc_ac[ci].markdown(html_card, unsafe_allow_html=True)
+                ci += 1
+        else:
+            st.info("No hay trayectos validados aún para generar este desglose.")
             
         st.markdown("##### ⚡ Consumo Energético Acumulado por Tipo de Tren (Neto Pantógrafo)")
         e_cols = st.columns(3)
