@@ -17,17 +17,17 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
     KM_SCALE = W / KM_TOTAL
     def xkm(km): return km * KM_SCALE
 
-    # Coordenadas Corregidas Definitivas (SVG Y-Axis: 0 es el techo, H es el suelo)
-    Y_44KV = 60
-    Y_SER = 110
-    Y_V2 = 160
+    # Coordenadas Corregidas Definitivas (UX/UI Espaciado)
+    Y_44KV = 100    # Empujado hacia abajo para dar respiro al título
+    Y_SER = 150
+    Y_V2 = 200
     Y_V1 = Y_V2 + gap_vias
     H = Y_V1 + 90
     y_mid = (Y_V1 + Y_V2) / 2
 
     svg = f'''
     <svg width="100%" height="{H}" viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="background-color: white; font-family: sans-serif; border-radius: 8px; border: 1px solid #ddd; display: block; margin-bottom: 5px;">
-        <text x="{W/2}" y="25" font-size="14" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
+        <text x="{W/2}" y="35" font-size="15" font-weight="bold" fill="#111" text-anchor="middle">MERVAL - {hora_str} {titulo_extra}  |  🔴 V2 LI→PU   🔵 V1 PU→LI</text>
         
         <!-- Pistas Físicas -->
         <line x1="0" y1="{Y_V2}" x2="{W}" y2="{Y_V2}" stroke="#c62828" stroke-width="5" />
@@ -156,7 +156,8 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 
     svg += '</svg>'
     
-    return svg, H
+    # Minificación para asegurar renderizado intacto
+    return svg.replace('\n', '')
 
 # =============================================================================
 # TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
@@ -197,11 +198,14 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if 'maniobra' not in df_dia_e.columns: df_dia_e['maniobra'] = None
     
     # -------------------------------------------------------------------------
-    # DESACOPLE DE ESTADO: Solución Definitiva al "Deadlock" de Streamlit
+    # DESACOPLE DE ESTADO DEFINITIVO (DEADLOCK FIX)
+    # Streamlit requiere que NO pasemos "value" al slider si queremos inyectar
+    # el dato directamente a su st.session_state[key].
     # -------------------------------------------------------------------------
-    time_key = f"t_math_{prefix_key}"
-    if time_key not in st.session_state: 
-        st.session_state[time_key] = 480.0
+    slider_key = f"sl_ui_{prefix_key}"
+    
+    if slider_key not in st.session_state: 
+        st.session_state[slider_key] = 480.0
     if f'play_{prefix_key}' not in st.session_state: 
         st.session_state[f'play_{prefix_key}'] = False
         
@@ -212,34 +216,30 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if modo != "▶️ Animado": 
         st.session_state[f'play_{prefix_key}'] = False
 
-    # Lógica Matemática que empuja el reloj desde las sombras
+    # Lógica Matemática que empuja el Slider directamente en memoria (sin intermediarios)
     if st.session_state[f'play_{prefix_key}']:
         speed = float(st.session_state.get(f'vs1_{prefix_key}', 1.0))
-        st.session_state[time_key] += (0.5 * speed) # Avance más notorio para fluidez
-        if st.session_state[time_key] >= 1439.0:
-            st.session_state[time_key] = 1439.0
+        new_val = st.session_state[slider_key] + (0.5 * speed) # Pasos más amplios (fluidez visual)
+        if new_val >= 1439.0:
+            st.session_state[slider_key] = 1439.0
             st.session_state[f'play_{prefix_key}'] = False
+        else:
+            st.session_state[slider_key] = new_val
 
     c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
-    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
-    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 1.0)
+    if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 15.0)
+    if c2.button("−1m", key=f"m1_{prefix_key}"): st.session_state[slider_key] = max(0.0, st.session_state[slider_key] - 1.0)
+    
     if modo == "▶️ Animado":
         if c3.button("⏸" if st.session_state[f'play_{prefix_key}'] else "▶️", key=f"pb_{prefix_key}"):
             st.session_state[f'play_{prefix_key}'] = not st.session_state[f'play_{prefix_key}']
-            st.rerun()
-    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 1.0)
-    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[time_key] = min(1439.0, st.session_state[time_key] + 15.0)
+            st.rerun() # Inicia/Pausa el bucle
+            
+    if c4.button("+1m", key=f"p1_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 1.0)
+    if c5.button("+15m", key=f"p15_{prefix_key}"): st.session_state[slider_key] = min(1439.0, st.session_state[slider_key] + 15.0)
 
-    # El Slider se actualiza a sí mismo (callback inverso) para sincronizar interacciones manuales
-    def sync_time():
-        st.session_state[time_key] = st.session_state[f"sl_{prefix_key}"]
-
-    st.slider("Timeline", min_value=0.0, max_value=1439.0, 
-              value=float(st.session_state[time_key]), 
-              step=0.1, key=f"sl_{prefix_key}", on_change=sync_time)
-
-    # Forzar la hora maestra a la variable de cálculo
-    hora_m1 = st.session_state[time_key]
+    # El Slider obedecerá a st.session_state[slider_key] automáticamente
+    hora_m1 = st.slider("Timeline", min_value=0.0, max_value=1439.0, step=0.1, key=slider_key)
     hora_s1 = mins_to_time_str(hora_m1)
 
     if modo == "▶️ Animado":
@@ -453,9 +453,9 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
-    # INYECCIÓN FINAL DE SVG (VÍA ST.COMPONENTS PROTEGIDO)
+    # INYECCIÓN FINAL DE SVG (Iframe Component para aislar el HTML del Markdown Engine)
     svg_html, height_px = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias)
-    components.html(svg_html, height=height_px + 10)
+    components.html(svg_html, height=height_px)
 
     st.divider()
     n_circ = len(df_act) if not df_act.empty else 0
