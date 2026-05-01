@@ -276,6 +276,7 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
             let lbl = tr.tipo === 'SFE' ? 'SFE' : (tr.tipo === 'XT-M' ? 'Modular' : 'XT-100');
             if (tr.motriz) lbl += ' [' + tr.motriz + ']';
             
+            // INYECCIÓN DE POPUP (TOOLTIP) NATIVO SVG
             let safe_tooltip = `Tren: ${lbl} (Serv. ${tr.svc})&#10;Vía ${tr.Via} | km ${km.toFixed(2)}&#10;Pasajeros a Bordo: ${current_pax} pax&#10;Energía Neta: ${Math.round(current_kwh)} kWh`;
             
             html += `<circle cx="${xp}" cy="${y_ln}" r="${r_c}" fill="${color}" stroke="black" stroke-width="2"><title>${safe_tooltip}</title></circle>`;
@@ -323,6 +324,7 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
+    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -373,34 +375,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
     return html_template, H
 
 # =============================================================================
-# TARJETAS MÉTRICAS DE ENERGÍA GLOBALES
-# =============================================================================
-def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
-    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
-    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
-    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
-    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
-    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
-    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
-    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
-    regen_bruta = t_regen + t_reostat
-    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
-    ide_global  = t_neto/max(0.1, tren_km_t)
-    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
-    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
-
-    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
-    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
-    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
-    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
-    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
-    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
-    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
-    st.divider()
-
-# =============================================================================
 # ORQUESTADOR CENTRAL: GEMELO DIGITAL
 # =============================================================================
 def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, use_rm, use_pend, estacion_anio, prefix_key, gap_vias, pax_dia_total=0, df_vacios_real=None):
@@ -413,12 +387,9 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     slider_key = f"sl_ui_{prefix_key}"
     time_key = f"t_math_{prefix_key}"
     
-    if slider_key not in st.session_state: 
-        st.session_state[slider_key] = 480.0
-    if time_key not in st.session_state: 
-        st.session_state[time_key] = 480.0
-    if f'play_{prefix_key}' not in st.session_state: 
-        st.session_state[f'play_{prefix_key}'] = False
+    if slider_key not in st.session_state: st.session_state[slider_key] = 480.0
+    if time_key not in st.session_state: st.session_state[time_key] = 480.0
+    if f'play_{prefix_key}' not in st.session_state: st.session_state[f'play_{prefix_key}'] = False
         
     cf, cm = st.columns([3,2])
     with cm: 
@@ -452,9 +423,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         def sync_time():
             st.session_state[time_key] = st.session_state[slider_key]
 
-        st.slider("Timeline", min_value=0.0, max_value=1439.0, 
-                  value=float(st.session_state[time_key]), 
-                  step=0.1, key=slider_key, on_change=sync_time)
+        st.slider("Timeline", min_value=0.0, max_value=1439.0, value=float(st.session_state[time_key]), step=0.1, key=slider_key, on_change=sync_time)
 
     hora_m1 = st.session_state[time_key]
     hora_s1 = mins_to_time_str(hora_m1)
@@ -614,18 +583,18 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             sub = df_acum[df_acum['tipo_tren'] == f_type]
             if not sub.empty: energy_by_fleet[f_type] += sub['kwh_viaje_neto'].sum()
 
-    tot_ser_44kv = sum(max(0.0, val) for val in ser_accum_visual.values()) / ETA_SER_RECTIFICADOR
+    total_ser_kwh_44kv = sum(max(0.0, val) for val in ser_accum_visual.values()) / ETA_SER_RECTIFICADOR
     t_elap = max(0.001, hora_m1 / 60.0)
     avg_d = {k: max(0.0, v) / ETA_SER_RECTIFICADOR / t_elap for k, v in ser_accum_visual.items()}
     flujo_avg = calcular_flujo_ac_nodo(avg_d)
-    tot_loss = flujo_avg['P_loss_kw'] * (1.15**2) * t_elap
-    seat_1 = (tot_ser_44kv + tot_loss) / 0.99
+    total_ac_loss_kwh = flujo_avg['P_loss_kw'] * (1.15**2) * t_elap
+    seat_accum_1 = (total_ser_kwh_44kv + total_ac_loss_kwh) / 0.99
 
     # =========================================================================
     # 3. RENDERIZADO VISUAL BIFURCADO (SCADA vs PYTHON)
     # =========================================================================
     if "SCADA" in modo:
-        html_scada, H_scada = draw_scada_js(df_dia_e, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_1, hora_m1, "", active_sers, gap_vias, use_rm)
+        html_scada, H_scada = draw_scada_js(df_dia_e, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_m1, "", active_sers, gap_vias, use_rm)
         components.html(html_scada, height=H_scada + 100)
         st.info("💡 **Modo SCADA Activado:** La animación gráfica se procesa a 60 FPS en tu Computador. Pasa el cursor sobre los trenes para ver la termodinámica.")
     else:
@@ -638,7 +607,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             f"⚙️ {pct_trac}% Tracción</span>",
             unsafe_allow_html=True
         )
-        svg_html, H_python = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_1, hora_s1[:5], "", active_sers, gap_vias)
+        svg_html, H_python = draw_diagram_svg(df_act, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_s1[:5], "", active_sers, gap_vias)
         st.markdown(svg_html, unsafe_allow_html=True)
 
     # =========================================================================
