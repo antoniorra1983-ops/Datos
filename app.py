@@ -122,11 +122,9 @@ def main():
         f_px1 = st.file_uploader("Pax Vía 1 (Puerto→Limache)", accept_multiple_files=True, key="px1")
         f_px2 = st.file_uploader("Pax Vía 2 (Limache→Puerto)", accept_multiple_files=True, key="px2")
         st.divider()
-        
         st.subheader("Reporte Oficial EFE")
         f_vacios_efe = st.file_uploader("Km Vacío Oficial EFE (.csv o .xlsx)", accept_multiple_files=True, key="vac_efe")
         st.divider()
-        
         st.subheader("✂️ Gestión de Flota (Split & Merge)")
         n_cortes_v1       = st.slider("Doble→Simple en El Belloto (V1, PU-LI)",0,20,0, on_change=reset_plan_state)
         n_cortes_pu_sa_v1 = st.slider("Doble→Simple en El Belloto (V1, PU-SA)",0,20,0, on_change=reset_plan_state)
@@ -161,9 +159,8 @@ def main():
     b2 = _all_blobs_internal(f_v2, "gh_blobs_v2")
     bx1 = _all_blobs_internal(f_px1, "gh_blobs_px1")
     bx2 = _all_blobs_internal(f_px2, "gh_blobs_px2")
-    
-    # Procesar Archivo Vacíos EFE Oficial
     b_vac_efe = _all_blobs_internal(f_vacios_efe, "gh_blobs_vac_efe")
+    
     parts_vac = []
     for nm, data in b_vac_efe:
         df_v = cargar_vacios_efe(data, nm)
@@ -172,7 +169,6 @@ def main():
     
     df1, df2, err_t = build_thdr_v71(b1, b2)
     df_px, err_p = build_pax_v71(bx1, bx2)
-    
     perfiles_pax = get_perfiles_pax(df_px)
 
     with st.sidebar:
@@ -256,11 +252,11 @@ def main():
     else:
         fechas = []
 
-    # =========================================================================
-    # ESTRUCTURA DE TABS (SIEMPRE VISIBLE)
-    # =========================================================================
     tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
     
+    # =========================================================================
+    # LÓGICA DE INTERFAZ: PLANIFICADOR Y ESTRATEGIA DE FLOTAS
+    # =========================================================================
     with tab_planificador:
         st.subheader("🔮 Planificador Avanzado: Gemelo Digital de Inyecciones (V118)")
         st.markdown("El algoritmo ruteará los trenes de la Planilla Maestra basándose en el N° de Servicio y calculará los tiempos de llegada usando Física Pura.")
@@ -269,7 +265,7 @@ def main():
         with col_p1:
             tipo_dia_plan = st.selectbox("📅 Tipo de Día para Perfil de Demanda", ["Laboral", "Sábado", "Domingo/Festivo"], key="td_plan", on_change=reset_plan_state)
             pax_promedio_viaje = {"Laboral": 280, "Sábado": 160, "Domingo/Festivo": 110}[tipo_dia_plan]
-            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC) Planificador", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan_2", on_change=reset_plan_state)
+            estacion_anio_plan = st.selectbox("🌡️ Estación del Año (HVAC)", ["verano", "otoño", "invierno", "primavera"], index=3, key="est_plan", on_change=reset_plan_state)
             
             df_px_filtered = pd.DataFrame()
             nombre_perfil = f"Estático ({pax_promedio_viaje} pax)"
@@ -318,42 +314,77 @@ def main():
                     if df_temp.empty: 
                         st.error(f"Error procesando: {msg}")
                     else:
-                        with st.expander("🛠️ Asignación Avanzada de Flota (Rolling Stock Rostering)", expanded=False):
-                            st.success("✅ Planilla decodificada. Distribuye la flota por trayecto y configuración (Simple/Doble):")
+                        with st.expander("🛠️ Asignación Avanzada de Flota (Rolling Stock Rostering)", expanded=True):
+                            st.success("✅ Planilla decodificada. Selecciona tu estrategia de asignación:")
                             
-                            df_temp['Config_Str'] = df_temp['doble'].map({True: 'Doble', False: 'Simple'})
-                            agrupado = df_temp.groupby(['svc_type', 'Config_Str']).size().reset_index(name='Total Viajes')
+                            estrategia_flota = st.radio(
+                                "Nivel de Asignación:",
+                                ["A: Por Trayecto y Configuración (Macro)", "B: Por N° de Servicio (Operativo)", "C: Por Viaje Individual (Laboratorio)"],
+                                horizontal=True, on_change=reset_plan_state
+                            )
+                            st.session_state['estrategia_flota'] = estrategia_flota
                             
-                            current_keys = set(zip(agrupado['svc_type'], agrupado['Config_Str']))
-                            stored_keys = set(zip(
-                                st.session_state.get('flota_map_v2', pd.DataFrame()).get('Ruta', []), 
-                                st.session_state.get('flota_map_v2', pd.DataFrame()).get('Configuración', [])
-                            ))
-                            
-                            if 'flota_map_v2' not in st.session_state or current_keys != stored_keys:
-                                matriz = []
-                                for _, r in agrupado.iterrows():
-                                    matriz.append({
-                                        "Ruta": r['svc_type'],
-                                        "Configuración": r['Config_Str'],
-                                        "Total Viajes": r['Total Viajes'],
-                                        "XT-100": r['Total Viajes'],
-                                        "XT-M": 0,
-                                        "SFE": 0
-                                    })
-                                st.session_state['flota_map_v2'] = pd.DataFrame(matriz)
-                            
-                            df_flota_edit = st.data_editor(st.session_state['flota_map_v2'], hide_index=True, use_container_width=True)
-                            
-                            if not df_flota_edit[df_flota_edit['XT-100'] + df_flota_edit['XT-M'] + df_flota_edit['SFE'] != df_flota_edit['Total Viajes']].empty: 
-                                st.warning("⚠️ Hay trayectos donde la suma asignada no coincide con el Total de Viajes. El remanente será XT-100.")
-                            
+                            if "A:" in estrategia_flota:
+                                df_temp['Config_Str'] = df_temp['doble'].map({True: 'Doble', False: 'Simple'})
+                                agrupado = df_temp.groupby(['svc_type', 'Config_Str']).size().reset_index(name='Total Viajes')
+                                
+                                current_keys = set(zip(agrupado['svc_type'], agrupado['Config_Str']))
+                                stored_keys = set(zip(
+                                    st.session_state.get('flota_map_A', pd.DataFrame()).get('Ruta', []), 
+                                    st.session_state.get('flota_map_A', pd.DataFrame()).get('Configuración', [])
+                                ))
+                                
+                                if 'flota_map_A' not in st.session_state or current_keys != stored_keys:
+                                    matriz = []
+                                    for _, r in agrupado.iterrows():
+                                        matriz.append({
+                                            "Ruta": r['svc_type'],
+                                            "Configuración": r['Config_Str'],
+                                            "Total Viajes": r['Total Viajes'],
+                                            "XT-100": r['Total Viajes'],
+                                            "XT-M": 0,
+                                            "SFE": 0
+                                        })
+                                    st.session_state['flota_map_A'] = pd.DataFrame(matriz)
+                                
+                                df_flota_edit_a = st.data_editor(st.session_state['flota_map_A'], hide_index=True, use_container_width=True)
+                                
+                                if not df_flota_edit_a[df_flota_edit_a['XT-100'] + df_flota_edit_a['XT-M'] + df_flota_edit_a['SFE'] != df_flota_edit_a['Total Viajes']].empty: 
+                                    st.warning("⚠️ Hay trayectos donde la suma asignada no coincide con el Total de Viajes. El remanente será XT-100.")
+                                
+                                st.session_state['temp_flota_edit_A'] = df_flota_edit_a
+                                
+                            elif "B:" in estrategia_flota:
+                                st.info("Asigna la flota al tren físico. Todos los viajes que haga ese tren usarán la misma tecnología.")
+                                srv_unicos = df_temp['num_servicio'].unique()
+                                v_por_srv = df_temp['num_servicio'].value_counts().to_dict()
+                                
+                                if 'flota_map_B' not in st.session_state or set(st.session_state['flota_map_B']['Servicio']) != set(srv_unicos):
+                                    matriz_b = [{"Servicio": s, "Total Viajes": v_por_srv[s], "Flota Asignada": "XT-100"} for s in srv_unicos]
+                                    st.session_state['flota_map_B'] = pd.DataFrame(matriz_b)
+                                
+                                df_flota_edit_b = st.data_editor(
+                                    st.session_state['flota_map_B'], 
+                                    column_config={"Flota Asignada": st.column_config.SelectboxColumn("Flota Asignada", options=["XT-100", "XT-M", "SFE"], required=True)},
+                                    hide_index=True, use_container_width=True
+                                )
+                                st.session_state['temp_flota_edit_B'] = df_flota_edit_b
+                                
+                            elif "C:" in estrategia_flota:
+                                st.warning("⚠️ Cuidado: Cambiar la flota por viaje rompe la continuidad termodinámica de los motores en la vida real.")
+                                if 'flota_map_C' not in st.session_state or set(st.session_state['flota_map_C']['ID Viaje']) != set(df_temp['_id']):
+                                    matriz_c = [{"ID Viaje": r['_id'], "Hora Inicio": mins_to_time_str(r['t_ini']), "Servicio": r['num_servicio'], "Ruta": r['svc_type'], "Flota Asignada": "XT-100"} for _, r in df_temp.sort_values('t_ini').iterrows()]
+                                    st.session_state['flota_map_C'] = pd.DataFrame(matriz_c)
+                                
+                                df_flota_edit_c = st.data_editor(
+                                    st.session_state['flota_map_C'], 
+                                    column_config={"Flota Asignada": st.column_config.SelectboxColumn("Flota Asignada", options=["XT-100", "XT-M", "SFE"], required=True)},
+                                    hide_index=True, use_container_width=True
+                                )
+                                st.session_state['temp_flota_edit_C'] = df_flota_edit_c
+
                             st.session_state['temp_df_plan'] = df_temp
-                            st.session_state['temp_flota_edit'] = df_flota_edit
             
-        # =====================================================================
-        # EJECUCIÓN DESACOPLADA (Botón guarda en memoria RAM el cálculo)
-        # =====================================================================
         if st.button("🚀 Ejecutar Gemelo Digital del Planificador", use_container_width=True, type="primary", key="btn_plan_full"):
             with st.spinner("Decodificando Planilla e inyectando al Motor Cinemático Termodinámico..."):
                 if modo_plan == "Matriz Sintética":
@@ -383,134 +414,50 @@ def main():
                         st.stop()
                         
                     df_sint = st.session_state['temp_df_plan'].copy().sort_values('t_ini')
+                    estrategia = st.session_state.get('estrategia_flota', "A:")
                     
-                    asignaciones = {}
-                    for _, r in st.session_state['temp_flota_edit'].iterrows():
-                        key = (r['Ruta'], r['Configuración'] == 'Doble')
-                        asignaciones[key] = ['XT-100']*int(r.get('XT-100', 0)) + ['XT-M']*int(r.get('XT-M', 0)) + ['SFE']*int(r.get('SFE', 0))
+                    if "A:" in estrategia:
+                        asignaciones = {}
+                        for _, r in st.session_state['temp_flota_edit_A'].iterrows():
+                            key = (r['Ruta'], r['Configuración'] == 'Doble')
+                            asignaciones[key] = ['XT-100']*int(r.get('XT-100', 0)) + ['XT-M']*int(r.get('XT-M', 0)) + ['SFE']*int(r.get('SFE', 0))
+                            
+                        def asignar_tren_a(row):
+                            key = (row['svc_type'], row['doble'])
+                            if key in asignaciones and len(asignaciones[key]) > 0:
+                                return asignaciones[key].pop(0)
+                            return 'XT-100'
+                        df_sint['tipo_tren'] = df_sint.apply(asignar_tren_a, axis=1)
                         
-                    def asignar_tren(row):
-                        key = (row['svc_type'], row['doble'])
-                        if key in asignaciones and len(asignaciones[key]) > 0:
-                            return asignaciones[key].pop(0)
-                        return 'XT-100'
+                    elif "B:" in estrategia:
+                        dict_flota_b = dict(zip(st.session_state['temp_flota_edit_B']['Servicio'], st.session_state['temp_flota_edit_B']['Flota Asignada']))
+                        df_sint['tipo_tren'] = df_sint['num_servicio'].map(dict_flota_b).fillna('XT-100')
                         
-                    df_sint['tipo_tren'] = df_sint.apply(asignar_tren, axis=1)
+                    elif "C:" in estrategia:
+                        dict_flota_c = dict(zip(st.session_state['temp_flota_edit_C']['ID Viaje'], st.session_state['temp_flota_edit_C']['Flota Asignada']))
+                        df_sint['tipo_tren'] = df_sint['_id'].map(dict_flota_c).fillna('XT-100')
 
                 if df_sint.empty:
                     st.warning("No hay viajes para simular.")
                     st.stop()
 
+                # Se delega el cálculo pesado a motor_fisico
                 df_sint_final, df_sint_e = procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, pct_trac, use_rm, use_pend, use_regen, tipo_regen, pax_promedio_viaje)
                 
-                # Guardamos en Memoria (Session State)
                 st.session_state['plan_ready'] = True
                 st.session_state['plan_sint_final'] = df_sint_final
                 st.session_state['plan_sint_e'] = df_sint_e
 
-        # RENDERIZADO CONTINUO (Fuera del botón)
         if st.session_state.get('plan_ready', False):
             st.divider()
             st.success("✅ Malla Operativa Físicamente Validada y Calculada con Perfiles Dinámicos de Masa")
             
             df_final_mem = st.session_state['plan_sint_final']
             df_e_mem = st.session_state['plan_sint_e']
-
-            # =========================================================================
-            # GENERACIÓN DE THDR TEÓRICA (ITINERARIO CINEMÁTICO) - MOVIDO ARRIBA
-            # =========================================================================
-            st.markdown("### 📄 Itinerario y Programación Operativa")
-            with st.expander("Ver Tabla de Horarios de Recorrido (THDR Teórica Generada)", expanded=False):
-                st.caption("Esta tabla representa el Itinerario Cinemático: Tiempos reales de llegada y salida calculados por el motor físico considerando la masa del tren (Flota + Pax), % de tracción, pendientes y 25 segundos de detención en cada estación intermedia.")
-                
-                thdr_data_v1 = []
-                thdr_data_v2 = []
-
-                for idx, row in df_final_mem.iterrows():
-                    via = row['Via']
-                    t_ini = row['t_ini']
-                    t_fin = row['t_fin']
-                    
-                    idx_o = int(np.argmin([abs(row['km_orig'] - k) for k in KM_ACUM]))
-                    idx_d = int(np.argmin([abs(row['km_dest'] - k) for k in KM_ACUM]))
-                    
-                    est_idxs = range(idx_o, idx_d + 1) if via == 1 else range(idx_o, idx_d - 1, -1)
-                    n_paradas_intermedias = max(0, len(est_idxs) - 2)
-                    
-                    # El motor físico usa 25.0 segundos como dwell en paradas intermedias
-                    dwell_mins = 25.0 / 60.0
-                    total_dwell = n_paradas_intermedias * dwell_mins
-                    total_movimiento = max(0.1, (t_fin - t_ini) - total_dwell)
-                    dist_total = abs(row['km_dest'] - row['km_orig'])
-                    
-                    record = {
-                        'Servicio': row['num_servicio'],
-                        'Flota': row['tipo_tren'],
-                        'Config.': 'Doble' if row['doble'] else 'Simple',
-                        'Origen': ESTACIONES[idx_o],
-                        'Destino': ESTACIONES[idx_d],
-                    }
-                    
-                    # Pre-inicializar columnas en orden geográfico según la Vía
-                    est_order = list(ESTACIONES) if via == 1 else list(reversed(ESTACIONES))
-                    for st_name in est_order:
-                        record[f'Lleg. {st_name}'] = '--:--:--'
-                        record[f'Sal. {st_name}'] = '--:--:--'
-                        
-                    paradas_hasta_ahora = 0
-                    for i, e_idx in enumerate(est_idxs):
-                        k_actual = KM_ACUM[e_idx]
-                        dist_recorrida = abs(k_actual - row['km_orig'])
-                        
-                        t_mov_parcial = total_movimiento * (dist_recorrida / dist_total) if dist_total > 0 else 0
-                        t_llegada = t_ini + t_mov_parcial + (paradas_hasta_ahora * dwell_mins)
-                        
-                        if i > 0 and i < len(est_idxs) - 1:
-                            t_salida = t_llegada + dwell_mins
-                            paradas_hasta_ahora += 1
-                        else:
-                            t_salida = t_llegada
-                            
-                        est_name = ESTACIONES[e_idx]
-                        
-                        # Lógica Operativa SCADA: Origen solo tiene Salida, Destino solo tiene Llegada
-                        if i == 0:
-                            record[f'Sal. {est_name}'] = mins_to_time_str(t_salida)
-                        elif i == len(est_idxs) - 1:
-                            record[f'Lleg. {est_name}'] = mins_to_time_str(t_llegada)
-                        else:
-                            record[f'Lleg. {est_name}'] = mins_to_time_str(t_llegada)
-                            record[f'Sal. {est_name}'] = mins_to_time_str(t_salida)
-                            
-                    if via == 1:
-                        thdr_data_v1.append(record)
-                    else:
-                        thdr_data_v2.append(record)
-                
-                # Renderizado por Vías
-                tb1, tb2 = st.tabs(["🔵 Vía 1 (PU → LI)", "🔴 Vía 2 (LI → PU)"])
-                with tb1:
-                    df_thdr_v1 = pd.DataFrame(thdr_data_v1)
-                    if not df_thdr_v1.empty:
-                        st.dataframe(df_thdr_v1, use_container_width=True)
-                        csv_thdr_v1 = df_thdr_v1.to_csv(index=False).encode('utf-8')
-                        st.download_button("📥 Descargar THDR Vía 1 (CSV)", data=csv_thdr_v1, file_name='THDR_Teorica_V1_V118.csv', mime='text/csv')
-                    else:
-                        st.info("No hay servicios planificados en Vía 1.")
-                        
-                with tb2:
-                    df_thdr_v2 = pd.DataFrame(thdr_data_v2)
-                    if not df_thdr_v2.empty:
-                        st.dataframe(df_thdr_v2, use_container_width=True)
-                        csv_thdr_v2 = df_thdr_v2.to_csv(index=False).encode('utf-8')
-                        st.download_button("📥 Descargar THDR Vía 2 (CSV)", data=csv_thdr_v2, file_name='THDR_Teorica_V2_V118.csv', mime='text/csv')
-                    else:
-                        st.info("No hay servicios planificados en Vía 2.")
-
-            st.divider()
             
-            # GEMELO DIGITAL ESTÁTICO / ANIMADO
-            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()), df_vacios_real=pd.DataFrame())
+            st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
+
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
 
     with tab_mapa:
         if df_all.empty:
@@ -536,13 +483,11 @@ def main():
 
     with tab_datos:
         st.subheader("📋 Auditoría de Datos: Carga de Pasajeros (Fuente Pura y Transparente)")
-        st.markdown("Esta vista te permite verificar exactamente qué leyó el sistema de tu archivo de Excel, fila por fila.")
         
         if df_px.empty:
             st.warning("⚠️ No hay datos de pasajeros cargados. Sube la **Carga de Pasajeros** en la barra lateral para generar la auditoría.")
         else:
             st.success(f"✅ Se leyeron {len(df_px)} registros de pasajeros con éxito.")
-            
             fechas_disponibles = sorted([str(x) for x in df_px['Fecha_s'].dropna().unique() if str(x).strip() and str(x).lower() not in ["none", "nan", "fecha no detectada"]])
             
             if fechas_disponibles:
@@ -567,10 +512,8 @@ def main():
                     renames = {'Fecha_s': 'Fecha', 'Nro_THDR': 'N° THDR Pax', 'Tren': 'Servicio', 'Hora Origen Formateada': 'Hora Origen', 'CargaMax': 'Total a Bordo'}
                     
                     for c in PAX_COLS:
-                        if c not in df_dia_pax.columns: 
-                            df_dia_pax[c] = 0
-                        else: 
-                            df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0).astype(int)
+                        if c not in df_dia_pax.columns: df_dia_pax[c] = 0
+                        else: df_dia_pax[c] = pd.to_numeric(df_dia_pax[c], errors='coerce').fillna(0).astype(int)
 
                     total_v1 = df_dia_pax[df_dia_pax['Via'] == 1]['CargaMax'].sum() if 'CargaMax' in df_dia_pax.columns else 0
                     total_v2 = df_dia_pax[df_dia_pax['Via'] == 2]['CargaMax'].sum() if 'CargaMax' in df_dia_pax.columns else 0
@@ -601,22 +544,6 @@ def main():
                         st.dataframe(df_v2_out, use_container_width=True)
                     else:
                         st.info("No hay registros de pasajeros para la Vía 2 en esta selección.")
-                    
-                    df_export_list = []
-                    if not df_v1.empty: df_export_list.append(df_v1_out)
-                    if not df_v2.empty: df_export_list.append(df_v2_out)
-                    
-                    if df_export_list:
-                        df_export = pd.concat(df_export_list, ignore_index=True)
-                        csv = df_export.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Descargar Tabla Cruda de Pasajeros CSV",
-                            data=csv,
-                            file_name=f'Reporte_Puro_Pasajeros_MERVAL_{fecha_sel_pax}.csv',
-                            mime='text/csv',
-                        )
-            else:
-                st.error("No se pudo extraer ninguna fecha válida del archivo de pasajeros. Verifica que la Columna D de los datos contenga la fecha correcta.")
 
     with tab_vacios:
         st.subheader("🚉 Auditoría de Maniobras en Vacío (Carrusel y Reposicionamientos)")
@@ -652,11 +579,8 @@ def main():
                 cc1.metric("Total Movimientos Oficiales", total_mov_v)
                 cc2.metric("Kilometraje Físico Computado", f"{total_km_v:.2f} km")
                 st.divider()
-                
                 st.dataframe(df_vacios_out, use_container_width=True)
-                csv_v = df_vacios_out.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Descargar Registro de Maniobras EFE", data=csv_v, file_name=f'Maniobras_Vacio_EFE_{fecha_sel_vacios}.csv', mime='text/csv')
-                
+
         else:
             if df_all.empty:
                 st.warning("⚠️ No hay archivos THDR cargados para auditar maniobras en vacío.")
@@ -672,13 +596,13 @@ def main():
                     dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
                     
                     if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
-                        vacios_list.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto (Corte)', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                        vacios_list.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
                     elif man == 'ACOPLE_BTO':
-                        vacios_list.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                        vacios_list.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
                     elif man == 'CORTE_SA':
-                        vacios_list.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea (Corte)', 'destino_txt': 'Taller EB', 'servicio_previo': row.get('num_servicio', ''), 'servicio_siguiente': '—', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+                        vacios_list.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
                     elif man == 'ACOPLE_SA':
-                        vacios_list.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea (Acople)', 'servicio_previo': '—', 'servicio_siguiente': row.get('num_servicio', ''), 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+                        vacios_list.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
 
                 if not vacios_list:
                     st.info("No se detectaron maniobras en vacío para la fecha seleccionada.")
@@ -688,31 +612,21 @@ def main():
                         factor_flota = 2 if v.get('doble', False) else 1
                         distancia_geo = v.get('dist', 0)
                         tren_km_equivalente = distancia_geo * factor_flota
-                        
                         tabla_vacios.append({
                             "Hora Estimada": mins_to_time_str(v['t_asigned']),
                             "Tren (Motriz)": str(v.get('motriz_num', '')),
-                            "Viene del Servicio": v.get('servicio_previo', '—'),
-                            "Va hacia Servicio": v.get('servicio_siguiente', '—'),
                             "Estación Origen": v.get('origen_txt', 'Desconocido'),
                             "Estación Destino": v.get('destino_txt', 'Desconocido'),
                             "Tren-km (Vacío)": round(tren_km_equivalente, 2),
-                            "Tipo Maniobra": "Ingreso/Salida Cochera" if v.get('cochera') else "Reposicionamiento",
                             "Configuración": f"{v.get('tipo', 'XT-100')} {'(Doble)' if v.get('doble') else '(Simple)'}"
                         })
                     
                     df_vacios_out = pd.DataFrame(tabla_vacios).sort_values("Hora Estimada").reset_index(drop=True)
-                    total_km_v = df_vacios_out["Tren-km (Vacío)"].sum()
-                    total_mov_v = len(df_vacios_out)
-                    
                     cc1, cc2 = st.columns(2)
-                    cc1.metric("Total Movimientos en Vacío", total_mov_v)
-                    cc2.metric("Kilometraje Total en Vacío (Tren-km)", f"{total_km_v:.1f} km")
+                    cc1.metric("Total Movimientos en Vacío", len(df_vacios_out))
+                    cc2.metric("Kilometraje Total en Vacío (Tren-km)", f"{df_vacios_out['Tren-km (Vacío)'].sum():.1f} km")
                     st.divider()
-                    
                     st.dataframe(df_vacios_out, use_container_width=True)
-                    csv_v = df_vacios_out.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Descargar Registro de Maniobras", data=csv_v, file_name=f'Maniobras_Vacio_MERVAL_{fecha_sel_vacios}.csv', mime='text/csv')
 
 if __name__ == "__main__": 
     main()
