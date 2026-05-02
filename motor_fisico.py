@@ -142,7 +142,7 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
     return aux_base + aux_hvac
 
 # =============================================================================
-# TERMODINÁMICA Y LOAD FLOW (CON FRICCIÓN DE CURVAS + INTEGRAL CÚBICA)
+# TERMODINÁMICA Y LOAD FLOW (CON SQUEEZE CONTROL, CURVAS Y JERK DINÁMICO)
 # =============================================================================
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
@@ -249,9 +249,44 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             a_freno_op = a_freno_max * 0.9 
             d_freno_req = (v_ms**2) / (2 * a_freno_op) if v_ms > 0 else 0
             
+            # Tracción Teórica Base
             f_disp_trac = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms))
             f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
             
+            # =========================================================================
+            # 💡 NUEVA MEJORA SCADA: Squeeze Control Activo (Norma EN 50388)
+            # Limitación inteligente de corriente por caída de voltaje en catenaria 3000Vcc
+            # =========================================================================
+            if estado_marcha == "ACCEL" or estado_marcha == "CRUISE":
+                # Determinamos distancia a la Subestación (SER) y resistencia eléctrica
+                dist_to_ser = min([abs(km_actual - s_km) for s_km, s_name in SER_DATA])
+                if km_actual < 2.25: r_km_val = 0.0638
+                elif km_actual < 6.80: r_km_val = 0.0530
+                elif km_actual < 10.92: r_km_val = 0.0495
+                elif km_actual < 21.41: r_km_val = 0.0417
+                elif km_actual < 30.36: r_km_val = 0.0399
+                else: r_km_val = 0.0355
+                
+                R_linea = r_km_val * dist_to_ser
+                
+                # Proyectamos el consumo eléctrico máximo que pediría el tren en este segundo
+                p_mech_max_kw = (f_disp_trac * max(0.1, v_ms)) / 1000.0
+                eta_din_est = calcular_eficiencia_vvvf(v_kmh, 1.0, f.get('eta_motor', 0.92))
+                p_elec_max_kw = (p_mech_max_kw / eta_din_est) + (f['aux_kw'] * n_uni)
+                
+                # Ley de Ohm: Si pide mucha corriente lejos de la SER, el voltaje cae
+                I_req = (p_elec_max_kw * 1000.0) / V_NOMINAL_DC
+                V_panto = V_NOMINAL_DC - (I_req * R_linea)
+                
+                # Factor de Degradación Activo (Derating Lineal entre 2800V y 2000V)
+                if V_panto < 2000.0: factor_squeeze = 0.0
+                elif V_panto < 2800.0: factor_squeeze = (V_panto - 2000.0) / 800.0
+                else: factor_squeeze = 1.0
+                
+                # Aplica el estrangulamiento físico al esfuerzo de tracción
+                f_disp_trac = f_disp_trac * factor_squeeze
+            # =========================================================================
+
             if dist_restante <= d_freno_req + (v_ms * dt * 1.2): estado_marcha = "BRAKE_STATION"
             elif v_kmh > v_cons_kmh + 1.5: estado_marcha = "BRAKE_OVERSPEED"
             else:
@@ -281,30 +316,23 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 f_regen_tramo = 0.0
                 a_net_target = (-(f_davis + f_curva) - f_pend) / masa_kg
             
-            # =========================================================================
-            # 💡 NUEVA MEJORA SCADA: Límite de Jerk Dinámico (Norma EN 50126 Confort)
-            # =========================================================================
-            JERK_MAX = 0.80 # m/s^3 (Límite máximo de tasa de cambio de aceleración)
+            # Límite de Jerk Dinámico (Norma EN 50126)
+            JERK_MAX = 0.80
             jerk_req = (a_net_target - a_prev) / dt
             jerk_aplicado = max(-JERK_MAX, min(JERK_MAX, jerk_req))
             
             a_net = a_prev + jerk_aplicado * dt
 
-            # =========================================================================
-            # 💡 NUEVA MEJORA SCADA: Integral Cúbica Analítica de 3er Orden
-            # Reemplaza al Pseudo-RK4/Euler. Error matemático = 0 ante Jerk constante.
-            # =========================================================================
+            # Integral Cúbica Analítica de 3er Orden (Evita Fallos de Euler y RK4)
             dt_actual = dt
             v_new = v_ms + (a_prev * dt_actual) + (0.5 * jerk_aplicado * dt_actual**2)
             
             if v_new < 0:
-                # Fallback lineal seguro para el último milisegundo de detención
                 dt_actual = v_ms / abs(a_prev) if a_prev < -0.001 else dt
                 v_new = 0.0
                 jerk_aplicado = 0.0
                 a_net = 0.0
                 
-            # Restricción absoluta a la velocidad de consigna (Evita Overshooting de RK4)
             if f_motor > 0 and v_new * 3.6 > v_cons_kmh:
                 v_new = v_cons_kmh / 3.6
                 a_net = (v_new - v_ms) / dt_actual if dt_actual > 0 else 0
@@ -317,10 +345,8 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 v_new = 1.0
                 dt_actual = dt
 
-            # Actualización Sub-milimétrica (Integración de Posición Cúbica)
             step_m = (v_ms * dt_actual) + (0.5 * a_prev * dt_actual**2) + ((1/6.0) * jerk_aplicado * dt_actual**3)
             
-            # Redundancia anti-colapso numérico a ultra bajas velocidades
             if step_m < 0: 
                 step_m = (v_ms + v_new) / 2.0 * dt_actual 
             
@@ -330,10 +356,10 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 
             if step_m < 0.1: step_m = 0.5 
             
-            a_prev = a_net # Memoria inercial del tren
+            a_prev = a_net 
                 
             if f_motor > 0:
-                carga_pct = f_motor / max(1.0, f_disp_trac)
+                carga_pct = f_motor / max(1.0, f_disp_trac) if f_disp_trac > 0 else 1.0
                 eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, f.get('eta_motor', 0.92))
                 trc += ((f_motor * step_m) / 3_600_000.0) / eta_din
             
@@ -388,6 +414,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
     t_min = int(df_dia['t_ini'].min())
     t_max = int(df_dia['t_fin'].max())
     time_steps = np.arange(t_min, t_max + 1, 10.0 / 60.0)
+    
     for via_ in [1, 2]:
         via_trains = df_dia[df_dia['Via'] == via_]
         if via_trains.empty: continue
@@ -402,6 +429,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
             })
         braking_by_idx = [[] for _ in range(len(time_steps))]
         accel_by_idx = [[] for _ in range(len(time_steps))]
+        
         for tr in trains_data:
             idx_start = np.searchsorted(time_steps, max(t_min, tr['t_ini']))
             idx_end = np.searchsorted(time_steps, min(t_max, tr['t_fin']), side='right')
@@ -409,6 +437,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
             n_uni = 2 if tr['doble'] else 1
             masa_kg = ((f['tara_t'] + f['m_iner_t']) * 1000 * n_uni) + (tr['pax_abordo'] * PAX_KG)
             eta_m = f.get('eta_motor', 0.92)
+            
             for i in range(idx_start, idx_end):
                 m = time_steps[i]
                 state, v_kmh = get_train_state_and_speed(m, tr['Via'], use_rm, tr['km_orig'], tr['km_dest'], tr['nodos'], tr['t_arr'])
@@ -434,20 +463,44 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     p_gen_kw = ((min(f_req_freno, f_disp_freno) * v_ms) / 1000.0 * ETA_REGEN_NETA) - p_aux_kw
                     if p_gen_kw > 0: braking_by_idx[i].append((tr['idx'], pos, p_gen_kw))
                     braking_ticks_per_trip[tr['idx']] += 1
+                    
                 elif state in ("ACCEL", "CRUISE"):
                     p_dem_kw = p_aux_kw
+                    
+                    # 💡 INYECCIÓN SQUEEZE CONTROL ACTIVO EN PRECALCULADOR
+                    dist_to_ser = min([abs(pos - s_km) for s_km, s_name in SER_DATA])
+                    if pos < 2.25: r_km_val = 0.0638
+                    elif pos < 6.80: r_km_val = 0.0530
+                    elif pos < 10.92: r_km_val = 0.0495
+                    elif pos < 21.41: r_km_val = 0.0417
+                    elif pos < 30.36: r_km_val = 0.0399
+                    else: r_km_val = 0.0355
+                    R_linea = r_km_val * dist_to_ser
+                    
+                    f_trac_bruta = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
+                    
+                    p_mech_est = (f_trac_bruta * max(0.1, v_ms)) / 1000.0
+                    eta_din_est = calcular_eficiencia_vvvf(v_kmh, 1.0, eta_m)
+                    p_elec_est = (p_mech_est / eta_din_est) + (f['aux_kw'] * n_uni)
+                    I_req = (p_elec_est * 1000.0) / V_NOMINAL_DC
+                    V_panto = V_NOMINAL_DC - (I_req * R_linea)
+                    
+                    if V_panto < 2000.0: factor_squeeze = 0.0
+                    elif V_panto < 2800.0: factor_squeeze = (V_panto - 2000.0) / 800.0
+                    else: factor_squeeze = 1.0
+                    
+                    f_trac_efectiva = f_trac_bruta * factor_squeeze
+
                     if state == "ACCEL": 
-                        f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
-                        p_trac_req = (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)
-                        f_motor_calc = min(f_trac_disp, p_trac_req) if v_ms > 0 else f_trac_disp
-                        carga_pct = f_motor_calc / max(1.0, f_trac_disp)
+                        carga_pct = f_trac_efectiva / max(1.0, f_trac_bruta) if f_trac_bruta > 0 else 1.0
                         eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
-                        p_dem_kw += ((f_motor_calc * v_ms) / 1000.0 / eta_din)
+                        p_dem_kw += ((f_trac_efectiva * v_ms) / 1000.0 / eta_din)
                     elif state == "CRUISE" and f_resistencia_total > 0: 
-                        f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
-                        carga_pct = f_resistencia_total / max(1.0, f_trac_disp)
+                        f_motor_calc = min(f_resistencia_total, f_trac_efectiva)
+                        carga_pct = f_motor_calc / max(1.0, f_trac_bruta) if f_trac_bruta > 0 else 1.0
                         eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
-                        p_dem_kw += (((f_resistencia_total * v_ms) / 1000.0) / eta_din)
+                        p_dem_kw += (((f_motor_calc * v_ms) / 1000.0) / eta_din)
+                        
                     accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
                     
         for i in range(len(time_steps)):
@@ -462,6 +515,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     p_transferred = min(p_gen * (ETA_MAX * np.exp(-dist / LAMBDA_REGEN_KM)), current_demands[a_idx])
                     current_demands[a_idx] -= p_transferred
                     regen_util_per_trip[b_idx] += (p_transferred / p_gen)
+                    
     for idx in df_dia.index: 
         if braking_ticks_per_trip[idx] > 0:
             regen_util_per_trip[idx] = min(1.0, regen_util_per_trip[idx] / braking_ticks_per_trip[idx])
