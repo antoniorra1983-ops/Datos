@@ -566,6 +566,9 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             if active_sers:
                 for s_name, e_val in distribuir_energia_sers(e_p, t_h_v, v['km_orig'], km_f, active_sers).items(): ser_accum_visual[s_name] += e_val
 
+    t_regen_acum = 0.0
+    t_reostato_acum = 0.0
+
     for idx, r in df_dia_e[df_dia_e['t_ini'] <= hora_m1].iterrows():
         t_eval = min(hora_m1, r['t_fin'])
         frac = (t_eval - r['t_ini']) / max(0.001, r['t_fin'] - r['t_ini'])
@@ -575,6 +578,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
     df_acum = df_dia_e[df_dia_e['t_ini'] <= hora_m1]
     if not df_acum.empty:
+        t_regen_acum = df_acum['kwh_viaje_regen'].sum()
         for f_type in ['XT-100', 'XT-M', 'SFE']:
             sub = df_acum[df_acum['tipo_tren'] == f_type]
             if not sub.empty: energy_by_fleet[f_type] += sub['kwh_viaje_neto'].sum()
