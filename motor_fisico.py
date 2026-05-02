@@ -14,6 +14,9 @@ except NameError: ELEV_KM_VAR = _ELEV_KM
 try: ELEV_M_VAR = ELEV_M
 except NameError: ELEV_M_VAR = _ELEV_M
 
+try: CURVAS_MERVAL_VAR = _CURVAS_MERVAL
+except NameError: CURVAS_MERVAL_VAR = []
+
 try: AUX_HVAC_HORA_VAR = AUX_HVAC_HORA
 except NameError: AUX_HVAC_HORA_VAR = _AUX_HVAC_HORA
 
@@ -109,26 +112,17 @@ def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=N
     else: return "CRUISE", vel_max
 
 # =============================================================================
-# MAPA DE EFICIENCIA 2D (NUEVO MODELO ALSTOM ONIX VVVF)
+# MAPA DE EFICIENCIA 2D (ALSTOM ONIX VVVF)
 # =============================================================================
 def calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_nominal):
     """
     Aproximación algebraica 2D del mapa de eficiencia del inversor VVVF + Motor Asíncrono.
-    Cruza la pérdida de magnetización a bajas revoluciones (Pérdidas de Conmutación)
-    con la caída de eficiencia a bajas exigencias de torque.
+    Cruza la pérdida de magnetización a bajas revoluciones con la caída de eficiencia a bajas cargas.
     """
-    # Factor de Torque (Carga): Cae drásticamente a cargas inferiores al 20%
     carga = max(0.01, min(1.0, abs(carga_pct)))
     eta_carga = 1.0 - 0.2 * (1.0 - carga)**3
-    
-    # Factor de Velocidad (RPM): Pérdidas por conmutación dominan en el arranque.
-    # La eficiencia crece asintóticamente con la velocidad.
     eta_vel = 1.0 - (4.5 / (abs(v_kmh) + 10.0))
-    
-    # Escalado combinado respecto al máximo catálogo
     eta_final = (eta_nominal / 0.95) * eta_vel * eta_carga
-    
-    # Restricciones físicas de la máquina real (Piso térmico en 45%)
     return max(0.45, min(eta_final, eta_nominal))
 
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
@@ -148,7 +142,7 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
     return aux_base + aux_hvac
 
 # =============================================================================
-# TERMODINÁMICA Y LOAD FLOW 
+# TERMODINÁMICA Y LOAD FLOW (CON FRICCIÓN DE CURVATURA)
 # =============================================================================
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
@@ -231,6 +225,7 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if n_uni == 2: f_davis = (f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))
             else: f_davis = f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2)
                 
+            # 1. Fuerza por Gravedad (Pendiente)
             f_pend = 0.0
             if use_pend:
                 for j in range(1, len(ELEV_KM_VAR)):
@@ -238,7 +233,18 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                         pend = ((ELEV_M_VAR[j] - ELEV_M_VAR[j-1]) / max(0.001, (ELEV_KM_VAR[j] - ELEV_KM_VAR[j-1])*1000)) * 1000
                         f_pend = DAVIS_E_N_PERMIL * pend * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0)
                         break
-                        
+
+            # 💡 2. NUEVA MEJORA SCADA: Fuerza Friccional por Curvatura (Fórmula de Von Röckl)
+            f_curva = 0.0
+            for c_ini, c_fin, c_radio in CURVAS_MERVAL_VAR:
+                if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini):
+                    if c_radio >= 300.0:
+                        w_c = 600.0 / (c_radio - 55.0)
+                    else:
+                        w_c = 500.0 / (c_radio - 30.0)
+                    f_curva = DAVIS_E_N_PERMIL * w_c * (masa_kg / 1000.0)
+                    break 
+
             a_freno_max = f['a_freno_ms2']
             a_freno_op = a_freno_max * 0.9 
             d_freno_req = (v_ms**2) / (2 * a_freno_op) if v_ms > 0 else 0
@@ -257,23 +263,24 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
 
             f_motor, f_regen_tramo, a_net_target = 0.0, 0.0, 0.0
             
+            # Incorporamos f_curva en todas las ecuaciones de resistencia (f_davis + f_pend + f_curva)
             if estado_marcha == "BRAKE_STATION":
-                f_req_freno = max(0.0, masa_kg * a_freno_op - f_davis - f_pend)
+                f_req_freno = max(0.0, masa_kg * a_freno_op - (f_davis + f_curva) - f_pend)
                 f_regen_tramo = min(f_req_freno, f_disp_freno)
-                a_net_target = (-f_regen_tramo - f_davis - f_pend) / masa_kg
+                a_net_target = (-f_regen_tramo - (f_davis + f_curva) - f_pend) / masa_kg
                 if a_net_target > -a_freno_op: a_net_target = -a_freno_op 
             elif estado_marcha == "BRAKE_OVERSPEED":
-                f_req_freno = max(0.0, masa_kg * 0.4 - f_davis - f_pend)
+                f_req_freno = max(0.0, masa_kg * 0.4 - (f_davis + f_curva) - f_pend)
                 f_regen_tramo = min(f_req_freno, f_disp_freno)
-                a_net_target = (-f_regen_tramo - f_davis - f_pend) / masa_kg
+                a_net_target = (-f_regen_tramo - (f_davis + f_curva) - f_pend) / masa_kg
                 a_net_target = min(a_net_target, -0.15)
             elif estado_marcha == "ACCEL":
                 f_motor = f_disp_trac
-                a_net_target = (f_motor - f_davis - f_pend) / masa_kg
+                a_net_target = (f_motor - (f_davis + f_curva) - f_pend) / masa_kg
             elif estado_marcha == "COAST":
                 f_motor = 0.0
                 f_regen_tramo = 0.0
-                a_net_target = (-f_davis - f_pend) / masa_kg
+                a_net_target = (-(f_davis + f_curva) - f_pend) / masa_kg
             
             jerk_limit = 0.8 * dt
             if a_net_target > a_prev + jerk_limit: a_net = a_prev + jerk_limit
@@ -291,7 +298,7 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if f_motor > 0 and v_new * 3.6 > v_cons_kmh:
                 v_new = v_cons_kmh / 3.6
                 a_req = (v_new - v_ms) / dt_actual if dt_actual > 0 else 0
-                f_motor_req = masa_kg * a_req + f_davis + f_pend
+                f_motor_req = masa_kg * a_req + (f_davis + f_curva) + f_pend
                 f_motor = max(0.0, min(f_motor_req, f_disp_trac))
                 
             if v_new < 0.5 and dist_restante < 2.0: break
@@ -388,10 +395,22 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 pos = km_at_t(tr['t_ini'], tr['t_fin'], m, tr['Via'], use_rm, tr['km_orig'], tr['km_dest'], tr['nodos'], tr['t_arr'])
                 v_ms = v_kmh / 3.6
                 p_aux_kw = calcular_aux_dinamico(f['aux_kw'] * n_uni, m / 60.0, tr['pax_abordo'], f.get('cap_max', 398) * n_uni, estacion_anio, state)
-                f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
                 
+                if n_uni == 2: f_davis = (f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))
+                else: f_davis = f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2)
+                
+                # Integrando la fricción de curvas también aquí en el Squeeze Control
+                f_curva = 0.0
+                for c_ini, c_fin, c_radio in CURVAS_MERVAL_VAR:
+                    if (c_ini <= pos <= c_fin) or (c_fin <= pos <= c_ini):
+                        w_c = 600.0 / (c_radio - 55.0) if c_radio >= 300.0 else 500.0 / (c_radio - 30.0)
+                        f_curva = DAVIS_E_N_PERMIL * w_c * (masa_kg / 1000.0)
+                        break
+                
+                f_resistencia_total = f_davis + f_curva
+
                 if state in ("BRAKE", "BRAKE_STATION", "BRAKE_OVERSPEED"):
-                    f_req_freno = max(0.0, masa_kg * (f['a_freno_ms2'] * 0.9) - f_davis)
+                    f_req_freno = max(0.0, masa_kg * (f['a_freno_ms2'] * 0.9) - f_resistencia_total)
                     f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
                     p_gen_kw = ((min(f_req_freno, f_disp_freno) * v_ms) / 1000.0 * ETA_REGEN_NETA) - p_aux_kw
                     if p_gen_kw > 0: braking_by_idx[i].append((tr['idx'], pos, p_gen_kw))
@@ -405,11 +424,11 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                         carga_pct = f_motor_calc / max(1.0, f_trac_disp)
                         eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
                         p_dem_kw += ((f_motor_calc * v_ms) / 1000.0 / eta_din)
-                    elif state == "CRUISE" and f_davis > 0: 
+                    elif state == "CRUISE" and f_resistencia_total > 0: 
                         f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
-                        carga_pct = f_davis / max(1.0, f_trac_disp)
+                        carga_pct = f_resistencia_total / max(1.0, f_trac_disp)
                         eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
-                        p_dem_kw += (((f_davis * v_ms) / 1000.0) / eta_din)
+                        p_dem_kw += (((f_resistencia_total * v_ms) / 1000.0) / eta_din)
                     accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
                     
         for i in range(len(time_steps)):
@@ -443,7 +462,11 @@ def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_re
         )
         reg_util = reg_panto_max * dict_regen.get(r.name, 1.0) if use_regen else 0.0
         
+        # 💡 MEJORA SCADA (Física Pura): Descartamos las horas de llegada inexactas de EFE
         t_fin_teorico = r['t_ini'] + (t_h * 60.0)
+        
+        # 💡 MEJORA SCADA: Borramos los nodos intermedios (que tienen horas redondeadas de EFE)
+        # para que la interpolación visual fluya usando exclusivamente la Curva de Davis.
         nodos_teoricos = [(r['t_ini'], r['km_orig']), (t_fin_teorico, r['km_dest'])]
         
         return pd.Series([
@@ -548,66 +571,3 @@ def procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, 
         
     df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
     return df_sint_final, df_sint_e
-
-# 💡 FLOTA CONFIG UPDATE
-FLOTA = {
-    "XT-100": {
-        "tara_t"       : 86.1, 
-        "m_iner_t"     : 7.20, 
-        "coches"       : 2, 
-        "cap_sent"     : 94, 
-        "cap_max"      : 398,
-        "n_motores"    : 4, 
-        "a_max_ms2"    : 1.0, 
-        "a_freno_ms2"  : 1.2,
-        "v_freno_min"  : 3.81, 
-        "eta_motor"    : 0.92, 
-        "davis_A"      : 1678.70, 
-        "davis_B"      : 13.97,
-        "davis_C"      : 0.35,     
-        "f_trac_max_kn": 58.274,   
-        "f_freno_max_kn": 52.976,  
-        "p_max_kw"     : 720.0,
-        "p_freno_max_kw": 720.0,
-        "aux_kw"       : 46.0      
-    },
-    "XT-M": {
-        "tara_t"       : 95.0, 
-        "m_iner_t"     : 8.0, 
-        "coches"       : 2, 
-        "cap_sent"     : 94, 
-        "cap_max"      : 376,
-        "n_motores"    : 4, 
-        "a_max_ms2"    : 1.0, 
-        "a_freno_ms2"  : 1.2,
-        "v_freno_min"  : 3.81, 
-        "eta_motor"    : 0.92, 
-        "davis_A"      : 1440.60, 
-        "davis_B"      : 0.00,
-        "davis_C"      : 0.35,     
-        "f_trac_max_kn": 65.0,   
-        "f_freno_max_kn": 55.0,  
-        "p_max_kw"     : 1040.0,
-        "p_freno_max_kw": 1040.0,
-        "aux_kw"       : 55.0      
-    },
-    "SFE": {
-        "tara_t"       : 141.0, 
-        "m_iner_t"     : 11.2, 
-        "coches"       : 3, 
-        "cap_max"      : 780,
-        "n_motores"    : 8,       
-        "a_max_ms2"    : 1.02,
-        "a_freno_ms2"  : 1.30, 
-        "v_freno_min"  : 3.81,
-        "eta_motor"    : 0.94,     
-        "davis_A"      : 2694.6, 
-        "davis_B"      : 16.70,
-        "davis_C"      : 0.35,     
-        "f_trac_max_kn": 220.0,   
-        "f_freno_max_kn": 190.0,  
-        "p_max_kw"     : 2400.0,
-        "p_freno_max_kw": 2800.0,
-        "aux_kw"       : 190.0     
-    },
-}
