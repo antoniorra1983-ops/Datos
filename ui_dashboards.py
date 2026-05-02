@@ -349,6 +349,7 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
+    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -655,7 +656,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     if "SCADA" in modo:
         html_scada, H_scada = draw_scada_js(df_dia_e, {k: max(0.0, v) for k, v in ser_accum_visual.items()}, seat_accum_1, hora_m1, "", active_sers, gap_vias, use_rm)
         components.html(html_scada, height=H_scada + 100)
-        st.info("💡 **Modo SCADA Activado:** La animación gráfica se procesa a 60 FPS en tu Computador. Pasa el cursor sobre los trenes para ver la termodinámica y el Perfil de Carga.")
+        st.info("💡 **Modo SCADA Activado:** La animación gráfica se procesa a 60 FPS en tu Computador. Pasa el cursor sobre los trenes para ver la termodinámica.")
     else:
         if st.session_state.get(f'vs1_{prefix_key}', 1.0) > 1.0:
             st.select_slider("Velocidad", options=[0.5, 1, 2, 5, 10], value=st.session_state.get(f'vs1_{prefix_key}', 1.0), format_func=lambda x: f"×{x}", key=f"vs1_{prefix_key}")
@@ -737,7 +738,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     n_comp  = len(df_comp)
     
     km_ac   = round(df_comp['tren_km'].sum(), 1) if not df_comp.empty else 0.0
-    ide_ac  = round(seat_accum_1 / max(1, df_inic['tren_km'].sum() + vacio_km_total), 3) if not df_inic.empty and (df_inic['tren_km'].sum() + vacio_km_total) > 0 else 0.0
+    ide_ac  = round(seat_accum_1 / max(1.0, df_inic['tren_km'].sum() + vacio_km_total), 3) if not df_inic.empty and (df_inic['tren_km'].sum() + vacio_km_total) > 0 else 0.0
 
     st.divider()
     st.markdown(f"#### 📊 Análisis Global Acumulado (00:00 → {hora_s1[:5]})")
