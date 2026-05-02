@@ -108,6 +108,29 @@ def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=N
     elif dt_to_B <= 1.0: return "BRAKE", vel_max
     else: return "CRUISE", vel_max
 
+# =============================================================================
+# MAPA DE EFICIENCIA 2D (NUEVO MODELO ALSTOM ONIX VVVF)
+# =============================================================================
+def calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_nominal):
+    """
+    Aproximación algebraica 2D del mapa de eficiencia del inversor VVVF + Motor Asíncrono.
+    Cruza la pérdida de magnetización a bajas revoluciones (Pérdidas de Conmutación)
+    con la caída de eficiencia a bajas exigencias de torque.
+    """
+    # Factor de Torque (Carga): Cae drásticamente a cargas inferiores al 20%
+    carga = max(0.01, min(1.0, abs(carga_pct)))
+    eta_carga = 1.0 - 0.2 * (1.0 - carga)**3
+    
+    # Factor de Velocidad (RPM): Pérdidas por conmutación dominan en el arranque.
+    # La eficiencia crece asintóticamente con la velocidad.
+    eta_vel = 1.0 - (4.5 / (abs(v_kmh) + 10.0))
+    
+    # Escalado combinado respecto al máximo catálogo
+    eta_final = (eta_nominal / 0.95) * eta_vel * eta_carga
+    
+    # Restricciones físicas de la máquina real (Piso térmico en 45%)
+    return max(0.45, min(eta_final, eta_nominal))
+
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
     hora_int = int(hora_decimal) % 24
     perfil = AUX_HVAC_HORA_VAR.get(estacion_anio, AUX_HVAC_HORA_VAR["primavera"])
@@ -283,9 +306,9 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if step_m < 0.1: step_m = 0.5 
                 
             if f_motor > 0:
+                # 💡 INYECCIÓN MAPA DE EFICIENCIA 2D
                 carga_pct = f_motor / max(1.0, f_disp_trac)
-                eta_base = f.get('eta_motor', 0.92)
-                eta_din = eta_base * (1.0 - 0.2 * (1.0 - max(0.1, carga_pct))**3)
+                eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, f.get('eta_motor', 0.92))
                 trc += ((f_motor * step_m) / 3_600_000.0) / eta_din
             
             if f_regen_tramo > 0 and v_kmh >= f['v_freno_min']:
@@ -367,6 +390,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 v_ms = v_kmh / 3.6
                 p_aux_kw = calcular_aux_dinamico(f['aux_kw'] * n_uni, m / 60.0, tr['pax_abordo'], f.get('cap_max', 398) * n_uni, estacion_anio, state)
                 f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
+                
                 if state in ("BRAKE", "BRAKE_STATION", "BRAKE_OVERSPEED"):
                     f_req_freno = max(0.0, masa_kg * (f['a_freno_ms2'] * 0.9) - f_davis)
                     f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
@@ -375,13 +399,21 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     braking_ticks_per_trip[tr['idx']] += 1
                 elif state in ("ACCEL", "CRUISE"):
                     p_dem_kw = p_aux_kw
+                    # 💡 INYECCIÓN MAPA DE EFICIENCIA 2D
                     if state == "ACCEL": 
-                        p_trac_disp = f['p_max_kw']*1000*n_uni*(pct_trac/100.0)
-                        f_trac_disp = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), p_trac_disp/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
-                        p_dem_kw += ((f_trac_disp * v_ms) / 1000.0 / eta_m)
+                        f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
+                        p_trac_req = (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)
+                        f_motor_calc = min(f_trac_disp, p_trac_req) if v_ms > 0 else f_trac_disp
+                        carga_pct = f_motor_calc / max(1.0, f_trac_disp)
+                        eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
+                        p_dem_kw += ((f_motor_calc * v_ms) / 1000.0 / eta_din)
                     elif state == "CRUISE" and f_davis > 0: 
-                        p_dem_kw += (((f_davis * v_ms) / 1000.0) / eta_m)
+                        f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
+                        carga_pct = f_davis / max(1.0, f_trac_disp)
+                        eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_m)
+                        p_dem_kw += (((f_davis * v_ms) / 1000.0) / eta_din)
                     accel_by_idx[i].append((tr['idx'], pos, p_dem_kw))
+                    
         for i in range(len(time_steps)):
             if not braking_by_idx[i] or not accel_by_idx[i]: continue
             current_demands = {a[0]: a[2] for a in accel_by_idx[i]}
@@ -394,6 +426,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     p_transferred = min(p_gen * (ETA_MAX * np.exp(-dist / LAMBDA_REGEN_KM)), current_demands[a_idx])
                     current_demands[a_idx] -= p_transferred
                     regen_util_per_trip[b_idx] += (p_transferred / p_gen)
+                    
     for idx in df_dia.index: 
         if braking_ticks_per_trip[idx] > 0:
             regen_util_per_trip[idx] = min(1.0, regen_util_per_trip[idx] / braking_ticks_per_trip[idx])
@@ -413,11 +446,7 @@ def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_re
         )
         reg_util = reg_panto_max * dict_regen.get(r.name, 1.0) if use_regen else 0.0
         
-        # 💡 MEJORA SCADA (Física Pura): Descartamos las horas de llegada inexactas de EFE
         t_fin_teorico = r['t_ini'] + (t_h * 60.0)
-        
-        # 💡 MEJORA SCADA: Borramos los nodos intermedios (que tienen horas redondeadas de EFE)
-        # para que la interpolación visual fluya usando exclusivamente la Curva de Davis.
         nodos_teoricos = [(r['t_ini'], r['km_orig']), (t_fin_teorico, r['km_dest'])]
         
         return pd.Series([
