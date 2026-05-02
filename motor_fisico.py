@@ -142,7 +142,7 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
     return aux_base + aux_hvac
 
 # =============================================================================
-# TERMODINÁMICA Y LOAD FLOW (CON FRICCIÓN DE CURVATURA)
+# TERMODINÁMICA Y LOAD FLOW (CON FRICCIÓN DE CURVAS + INTEGRAL CÚBICA)
 # =============================================================================
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
@@ -234,7 +234,7 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                         f_pend = DAVIS_E_N_PERMIL * pend * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0)
                         break
 
-            # 💡 2. NUEVA MEJORA SCADA: Fuerza Friccional por Curvatura (Fórmula de Von Röckl)
+            # 2. Fuerza Friccional por Curvatura (Fórmula Empírica de Von Röckl)
             f_curva = 0.0
             for c_ini, c_fin, c_radio in CURVAS_MERVAL_VAR:
                 if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini):
@@ -263,7 +263,6 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
 
             f_motor, f_regen_tramo, a_net_target = 0.0, 0.0, 0.0
             
-            # Incorporamos f_curva en todas las ecuaciones de resistencia (f_davis + f_pend + f_curva)
             if estado_marcha == "BRAKE_STATION":
                 f_req_freno = max(0.0, masa_kg * a_freno_op - (f_davis + f_curva) - f_pend)
                 f_regen_tramo = min(f_req_freno, f_disp_freno)
@@ -282,23 +281,35 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 f_regen_tramo = 0.0
                 a_net_target = (-(f_davis + f_curva) - f_pend) / masa_kg
             
-            jerk_limit = 0.8 * dt
-            if a_net_target > a_prev + jerk_limit: a_net = a_prev + jerk_limit
-            elif a_net_target < a_prev - jerk_limit: a_net = a_prev - jerk_limit
-            else: a_net = a_net_target
-            a_prev = a_net
+            # =========================================================================
+            # 💡 NUEVA MEJORA SCADA: Límite de Jerk Dinámico (Norma EN 50126 Confort)
+            # =========================================================================
+            JERK_MAX = 0.80 # m/s^3 (Límite máximo de tasa de cambio de aceleración)
+            jerk_req = (a_net_target - a_prev) / dt
+            jerk_aplicado = max(-JERK_MAX, min(JERK_MAX, jerk_req))
+            
+            a_net = a_prev + jerk_aplicado * dt
 
-            v_new = v_ms + a_net * dt
+            # =========================================================================
+            # 💡 NUEVA MEJORA SCADA: Integral Cúbica Analítica de 3er Orden
+            # Reemplaza al Pseudo-RK4/Euler. Error matemático = 0 ante Jerk constante.
+            # =========================================================================
             dt_actual = dt
+            v_new = v_ms + (a_prev * dt_actual) + (0.5 * jerk_aplicado * dt_actual**2)
             
             if v_new < 0:
-                dt_actual = v_ms / abs(a_net) if a_net < -0.001 else dt
+                # Fallback lineal seguro para el último milisegundo de detención
+                dt_actual = v_ms / abs(a_prev) if a_prev < -0.001 else dt
                 v_new = 0.0
+                jerk_aplicado = 0.0
+                a_net = 0.0
                 
+            # Restricción absoluta a la velocidad de consigna (Evita Overshooting de RK4)
             if f_motor > 0 and v_new * 3.6 > v_cons_kmh:
                 v_new = v_cons_kmh / 3.6
-                a_req = (v_new - v_ms) / dt_actual if dt_actual > 0 else 0
-                f_motor_req = masa_kg * a_req + (f_davis + f_curva) + f_pend
+                a_net = (v_new - v_ms) / dt_actual if dt_actual > 0 else 0
+                jerk_aplicado = (a_net - a_prev) / dt_actual if dt_actual > 0 else 0
+                f_motor_req = masa_kg * a_net + (f_davis + f_curva) + f_pend
                 f_motor = max(0.0, min(f_motor_req, f_disp_trac))
                 
             if v_new < 0.5 and dist_restante < 2.0: break
@@ -306,11 +317,20 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
                 v_new = 1.0
                 dt_actual = dt
 
-            step_m = (v_ms + v_new) / 2.0 * dt_actual
+            # Actualización Sub-milimétrica (Integración de Posición Cúbica)
+            step_m = (v_ms * dt_actual) + (0.5 * a_prev * dt_actual**2) + ((1/6.0) * jerk_aplicado * dt_actual**3)
+            
+            # Redundancia anti-colapso numérico a ultra bajas velocidades
+            if step_m < 0: 
+                step_m = (v_ms + v_new) / 2.0 * dt_actual 
+            
             if step_m > dist_restante:
                 step_m = dist_restante
                 if v_ms + v_new > 0: dt_actual = step_m / ((v_ms + v_new) / 2.0)
+                
             if step_m < 0.1: step_m = 0.5 
+            
+            a_prev = a_net # Memoria inercial del tren
                 
             if f_motor > 0:
                 carga_pct = f_motor / max(1.0, f_disp_trac)
@@ -399,7 +419,6 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 if n_uni == 2: f_davis = (f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))
                 else: f_davis = f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2)
                 
-                # Integrando la fricción de curvas también aquí en el Squeeze Control
                 f_curva = 0.0
                 for c_ini, c_fin, c_radio in CURVAS_MERVAL_VAR:
                     if (c_ini <= pos <= c_fin) or (c_fin <= pos <= c_ini):
@@ -462,11 +481,7 @@ def calcular_termodinamica_flota_v111(df_dia, pct_trac, use_pend, use_rm, use_re
         )
         reg_util = reg_panto_max * dict_regen.get(r.name, 1.0) if use_regen else 0.0
         
-        # 💡 MEJORA SCADA (Física Pura): Descartamos las horas de llegada inexactas de EFE
         t_fin_teorico = r['t_ini'] + (t_h * 60.0)
-        
-        # 💡 MEJORA SCADA: Borramos los nodos intermedios (que tienen horas redondeadas de EFE)
-        # para que la interpolación visual fluya usando exclusivamente la Curva de Davis.
         nodos_teoricos = [(r['t_ini'], r['km_orig']), (t_fin_teorico, r['km_dest'])]
         
         return pd.Series([
