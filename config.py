@@ -21,6 +21,16 @@ N_EST    = len(ESTACIONES)
 ELEV_KM = [0.0, 0.7, 1.4, 2.2, 3.9, 6.0, 7.4, 8.3, 9.2, 10.2, 11.7, 19.1, 21.4, 23.3, 25.3, 26.4, 27.6, 28.5, 29.1, 30.4, 43.13]
 ELEV_M  = [12, 10, 10, 10, 18, 15, 12, 15, 35, 50, 55, 88, 122, 132, 142, 148, 155, 162, 175, 198, 216]
 
+# --- NUEVO: MAPA DE CURVATURAS (VON RÖCKL) ---
+# Formato: (km_inicio, km_fin, radio_metros)
+_CURVAS_MERVAL = [
+    (4.2, 5.1, 300.0),    # Curva Portales
+    (5.8, 6.6, 400.0),    # Curva Recreo - Miramar
+    (11.8, 14.5, 250.0),  # Sinuosidad El Salto - Paso Hondo
+    (26.5, 29.5, 500.0),  # Sinuosidad Las Américas - Peñablanca
+    (31.5, 41.5, 400.0)   # Sinuosidad Sector Rumié (Peñablanca - Limache)
+]
+
 EST_LATS = [-33.03846,-33.04295,-33.04405,-33.04241,-33.03284,-33.02703,-33.02496,
             -33.02642,-33.02868,-33.03300,-33.04113,-33.04031,-33.04532,-33.03966,
             -33.04311,-33.04385,-33.04158,-33.04258,-33.04203,-33.04019,-32.98427]
@@ -109,27 +119,25 @@ FLOTA = {
         "tara_t"       : 86.1, 
         "m_iner_t"     : 7.20, 
         "coches"       : 2, 
-        "cap_sent"     : 94, 
         "cap_max"      : 398,
         "n_motores"    : 4, 
         "a_max_ms2"    : 1.0, 
         "a_freno_ms2"  : 1.2,
         "v_freno_min"  : 3.81, 
         "eta_motor"    : 0.92, 
-        "davis_A"      : 1678.70, 
-        "davis_B"      : 13.97,
-        "davis_C"      : 0.35,     
-        "f_trac_max_kn": 58.274,   
-        "f_freno_max_kn": 52.976,  
-        "p_max_kw"     : 504.0,
-        "p_freno_max_kw": 600.0,
+        "davis_A"      : 1615.00, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.5458,     
+        "f_trac_max_kn": 110.0,   
+        "f_freno_max_kn": 105.0,  
+        "p_max_kw"     : 720.0,
+        "p_freno_max_kw": 720.0,
         "aux_kw"       : 46.0      
     },
     "XT-M": {
         "tara_t"       : 95.0, 
         "m_iner_t"     : 8.0, 
         "coches"       : 2, 
-        "cap_sent"     : 94, 
         "cap_max"      : 376,
         "n_motores"    : 4, 
         "a_max_ms2"    : 1.0, 
@@ -139,10 +147,10 @@ FLOTA = {
         "davis_A"      : 1440.60, 
         "davis_B"      : 0.00,
         "davis_C"      : 0.35,     
-        "f_trac_max_kn": 65.0,   
-        "f_freno_max_kn": 55.0,  
-        "p_max_kw"     : 720.0,
-        "p_freno_max_kw": 800.0,
+        "f_trac_max_kn": 115.0,   
+        "f_freno_max_kn": 110.0,  
+        "p_max_kw"     : 1040.0,
+        "p_freno_max_kw": 1040.0,
         "aux_kw"       : 55.0      
     },
     "SFE": {
@@ -150,14 +158,14 @@ FLOTA = {
         "m_iner_t"     : 11.2, 
         "coches"       : 3, 
         "cap_max"      : 780,
-        "n_motores"    : 8,       
+        "n_motores"    : 8,        
         "a_max_ms2"    : 1.02,
         "a_freno_ms2"  : 1.30, 
         "v_freno_min"  : 3.81,
         "eta_motor"    : 0.94,     
-        "davis_A"      : 2694.6, 
-        "davis_B"      : 16.70,
-        "davis_C"      : 0.35,     
+        "davis_A"      : 2480.00, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.4714,     
         "f_trac_max_kn": 220.0,   
         "f_freno_max_kn": 190.0,  
         "p_max_kw"     : 2400.0,
@@ -171,9 +179,3 @@ feriados_2026 = [
     '2026-06-21', '2026-07-16', '2026-08-15', '2026-09-18', '2026-09-19', 
     '2026-10-12', '2026-10-31', '2026-12-08', '2026-12-25'
 ]
-
-MES_A_ESTACION = {
-    "Enero":"verano","Febrero":"verano","Marzo":"otoño","Abril":"otoño",
-    "Mayo":"otoño","Junio":"invierno","Julio":"invierno","Agosto":"invierno",
-    "Septiembre":"primavera","Octubre":"primavera","Noviembre":"primavera","Diciembre":"verano"
-}
