@@ -306,7 +306,6 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if step_m < 0.1: step_m = 0.5 
                 
             if f_motor > 0:
-                # 💡 INYECCIÓN MAPA DE EFICIENCIA 2D
                 carga_pct = f_motor / max(1.0, f_disp_trac)
                 eta_din = calcular_eficiencia_vvvf(v_kmh, carga_pct, f.get('eta_motor', 0.92))
                 trc += ((f_motor * step_m) / 3_600_000.0) / eta_din
@@ -399,7 +398,6 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     braking_ticks_per_trip[tr['idx']] += 1
                 elif state in ("ACCEL", "CRUISE"):
                     p_dem_kw = p_aux_kw
-                    # 💡 INYECCIÓN MAPA DE EFICIENCIA 2D
                     if state == "ACCEL": 
                         f_trac_disp = f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
                         p_trac_req = (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)
@@ -426,7 +424,6 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                     p_transferred = min(p_gen * (ETA_MAX * np.exp(-dist / LAMBDA_REGEN_KM)), current_demands[a_idx])
                     current_demands[a_idx] -= p_transferred
                     regen_util_per_trip[b_idx] += (p_transferred / p_gen)
-                    
     for idx in df_dia.index: 
         if braking_ticks_per_trip[idx] > 0:
             regen_util_per_trip[idx] = min(1.0, regen_util_per_trip[idx] / braking_ticks_per_trip[idx])
@@ -551,3 +548,66 @@ def procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, 
         
     df_sint_e = calcular_termodinamica_flota_v111(df_sint_final, pct_trac, use_pend, use_rm, use_regen, dict_regen_sint, estacion_anio_plan)
     return df_sint_final, df_sint_e
+
+# 💡 FLOTA CONFIG UPDATE
+FLOTA = {
+    "XT-100": {
+        "tara_t"       : 86.1, 
+        "m_iner_t"     : 7.20, 
+        "coches"       : 2, 
+        "cap_sent"     : 94, 
+        "cap_max"      : 398,
+        "n_motores"    : 4, 
+        "a_max_ms2"    : 1.0, 
+        "a_freno_ms2"  : 1.2,
+        "v_freno_min"  : 3.81, 
+        "eta_motor"    : 0.92, 
+        "davis_A"      : 1678.70, 
+        "davis_B"      : 13.97,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 58.274,   
+        "f_freno_max_kn": 52.976,  
+        "p_max_kw"     : 720.0,
+        "p_freno_max_kw": 720.0,
+        "aux_kw"       : 46.0      
+    },
+    "XT-M": {
+        "tara_t"       : 95.0, 
+        "m_iner_t"     : 8.0, 
+        "coches"       : 2, 
+        "cap_sent"     : 94, 
+        "cap_max"      : 376,
+        "n_motores"    : 4, 
+        "a_max_ms2"    : 1.0, 
+        "a_freno_ms2"  : 1.2,
+        "v_freno_min"  : 3.81, 
+        "eta_motor"    : 0.92, 
+        "davis_A"      : 1440.60, 
+        "davis_B"      : 0.00,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 65.0,   
+        "f_freno_max_kn": 55.0,  
+        "p_max_kw"     : 1040.0,
+        "p_freno_max_kw": 1040.0,
+        "aux_kw"       : 55.0      
+    },
+    "SFE": {
+        "tara_t"       : 141.0, 
+        "m_iner_t"     : 11.2, 
+        "coches"       : 3, 
+        "cap_max"      : 780,
+        "n_motores"    : 8,       
+        "a_max_ms2"    : 1.02,
+        "a_freno_ms2"  : 1.30, 
+        "v_freno_min"  : 3.81,
+        "eta_motor"    : 0.94,     
+        "davis_A"      : 2694.6, 
+        "davis_B"      : 16.70,
+        "davis_C"      : 0.35,     
+        "f_trac_max_kn": 220.0,   
+        "f_freno_max_kn": 190.0,  
+        "p_max_kw"     : 2400.0,
+        "p_freno_max_kw": 2800.0,
+        "aux_kw"       : 190.0     
+    },
+}
