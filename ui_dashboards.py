@@ -166,10 +166,6 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 # MOTOR VISUAL 2: SCADA JAVASCRIPT (CLIENT-SIDE RENDERING + POPUPS)
 # =============================================================================
 def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titulo_extra, active_sers_list, gap_vias, use_rm):
-    """
-    Empaqueta el perfil matemático y genera el Iframe HTML.
-    JS lee el JSON e interpola las posiciones, tooltips y pasajeros dinámicos a 60 FPS.
-    """
     trips_data = []
     
     for _, row in df_dia_e.iterrows():
@@ -349,7 +345,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
-    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -458,9 +453,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         else:
             st.session_state[time_key] = new_val
 
-    # =========================================================================
-    # LÓGICA DE TIEMPO COMPARTIDA
-    # =========================================================================
     if "SCADA" not in modo:
         c1,c2,c3,c4,c5,_ = st.columns([1,1,1,1,1,2])
         if c1.button("−15m", key=f"m15_{prefix_key}"): st.session_state[time_key] = max(0.0, st.session_state[time_key] - 15.0)
@@ -479,9 +471,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     hora_m1 = st.session_state[time_key]
     hora_s1 = mins_to_time_str(hora_m1)
 
-    # =========================================================================
-    # 1. CÁLCULO FÍSICO INSTANTÁNEO (Común para ambos modos)
-    # =========================================================================
     df_act = df_dia_e[(df_dia_e['t_ini'] <= hora_m1) & (df_dia_e['t_fin'] > hora_m1)].copy()
     instant_ser_demands_kw = {s[1]: 0.0 for s in active_sers}
     
@@ -559,7 +548,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             
             cab += f"Pax a Bordo Actual: {pax_v}\n"
             
-            # 💡 INYECCIÓN PERFIL DE PASAJEROS POR ESTACIÓN (TOOLTIP PYTHON)
             pax_d = row.get('pax_d', {})
             if isinstance(pax_d, dict) and sum(pax_d.values()) > 0:
                 cab += "Perfil Estaciones:\n"
@@ -573,9 +561,6 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
 
         df_act['tooltip'] = df_act.apply(_make_tooltip_and_power, axis=1)
 
-    # =========================================================================
-    # 2. CÁLCULO FÍSICO ACUMULADO (Común para ambos modos)
-    # =========================================================================
     vacios_hasta_ahora = []
     vacio_kwh_total = 0.0
     vacio_km_total = 0.0
@@ -588,23 +573,56 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         vacios_hasta_ahora = [v for v in df_dia_v.to_dict('records') if v['t_asigned'] <= hora_m1]
         vacio_count = len(vacios_hasta_ahora)
         for v in vacios_hasta_ahora:
+            is_manual_limache = "Manual" in v.get('origen_txt', '')
             es_cochera = v.get('cochera', False)
             dist_efe = v.get('dist', 0.0)
-            vacio_km_total += dist_efe + (1.0 if es_cochera else 0.0)
-            if es_cochera:
-                trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(v['tipo'], False, 25.3, 26.3, 1, pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True)
-                e_panto_a = trc_a + aux_a - reg_a
-                vacio_kwh_total += e_panto_a
-                energy_by_fleet[v['tipo']] += e_panto_a
+            factor_flota = 2 if v.get('doble', False) else 1
+            
+            if is_manual_limache:
+                vacio_km_total += dist_efe * factor_flota
+                trc_v, aux_v, reg_v, _, _, t_h_v = simular_tramo_termodinamico(
+                    v['tipo'], v.get('doble', False), 0.0, dist_efe, 1, 
+                    pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v.get('t_asigned', 480.0), True
+                )
+                e_p = trc_v + aux_v - reg_v
+                vacio_kwh_total += e_p
+                if v['tipo'] in energy_by_fleet: energy_by_fleet[v['tipo']] += e_p
                 if active_sers:
-                    for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, 25.3, 26.3, active_sers).items(): ser_accum_visual[s_name] += e_val
-            if dist_efe > 0.0:
-                trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(v['tipo'], False, v['km_orig'], v['km_dest'], v['Via'], pct_trac, use_rm, use_pend, None, {}, 0, None, None, estacion_anio, v['t_asigned'], True)
-                e_panto_b = trc_b + aux_b - reg_b
-                vacio_kwh_total += e_panto_b
-                energy_by_fleet[v['tipo']] += e_panto_b
-                if active_sers:
-                    for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, v['km_orig'], v['km_dest'], active_sers).items(): ser_accum_visual[s_name] += e_val
+                    for s_name, e_val in distribuir_energia_sers(e_p, t_h_v, KM_ACUM[20], KM_ACUM[20], active_sers).items(): 
+                        ser_accum_visual[s_name] += e_val
+            else:
+                if es_cochera:
+                    vacio_km_total += 1.0 * factor_flota
+                    trc_a, aux_a, reg_a, _, _, th_a = simular_tramo_termodinamico(
+                        v['tipo'], False, 25.3, 26.3, 1, 
+                        pct_trac, use_rm, False, None, {}, 0, 20.0, None, estacion_anio, v['t_asigned'], True
+                    )
+                    e_panto_a = trc_a + aux_a - reg_a
+                    vacio_kwh_total += e_panto_a
+                    energy_by_fleet[v['tipo']] += e_panto_a
+                    if active_sers:
+                        km_cochera = v.get('km_orig', KM_ACUM[14])
+                        for s_name, e_val in distribuir_energia_sers(e_panto_a, th_a, km_cochera, km_cochera, active_sers).items(): 
+                            ser_accum_visual[s_name] += e_val
+                if dist_efe > 0.0:
+                    vacio_km_total += dist_efe * factor_flota
+                    km_orig = v.get('km_orig', 0.0)
+                    km_dest = v.get('km_dest', km_orig)
+                    via_v = 1 if km_orig <= km_dest else 2
+                    is_loc = abs(km_orig - km_dest) < 0.001
+                    if is_loc: 
+                        km_dest = km_orig + dist_efe
+                        via_v = 1
+                    trc_b, aux_b, reg_b, _, _, th_b = simular_tramo_termodinamico(
+                        v['tipo'], False, km_orig, km_dest, via_v, 
+                        pct_trac, use_rm, use_pend if not is_loc else False, None, {}, 0, 20.0 if is_loc else None, None, estacion_anio, v['t_asigned'], True
+                    )
+                    e_panto_b = trc_b + aux_b - reg_b
+                    vacio_kwh_total += e_panto_b
+                    energy_by_fleet[v['tipo']] += e_panto_b
+                    if active_sers:
+                        for s_name, e_val in distribuir_energia_sers(e_panto_b, th_b, km_orig, km_dest, active_sers).items(): 
+                            ser_accum_visual[s_name] += e_val
     else:
         vacios_dia = get_vacios_dia(df_dia)
         for idx, row in df_dia[df_dia['maniobra'].notnull()].iterrows():
@@ -738,7 +756,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
     n_comp  = len(df_comp)
     
     km_ac   = round(df_comp['tren_km'].sum(), 1) if not df_comp.empty else 0.0
-    ide_ac  = round(seat_accum_1 / max(1.0, df_inic['tren_km'].sum() + vacio_km_total), 3) if not df_inic.empty and (df_inic['tren_km'].sum() + vacio_km_total) > 0 else 0.0
+    ide_ac  = round(seat_accum_1 / max(1, df_inic['tren_km'].sum() + vacio_km_total), 3) if not df_inic.empty and (df_inic['tren_km'].sum() + vacio_km_total) > 0 else 0.0
 
     st.divider()
     st.markdown(f"#### 📊 Análisis Global Acumulado (00:00 → {hora_s1[:5]})")
@@ -954,12 +972,12 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
                 fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=e_hora['kwh_viaje_aux'], name='Auxiliar', marker_color='#F9A825'))
                 fig_hora.add_trace(go.Bar(x=e_hora['hora'], y=-e_hora['kwh_viaje_regen'], name='Regeneración Útil', marker_color='#2E7D32'))
                 fig_hora.add_trace(go.Scatter(x=e_hora['hora'], y=e_hora['kwh_viaje_neto'] / ETA_SER_RECTIFICADOR, mode='lines', name='Demanda Est. SER', line=dict(color='red', width=2, dash='dot')))
-                fig_hora.update_layout(barmode='relative', title="Energía Total del Día por Hora con Demanda SER", xaxis_title="Hora", yaxis_title="kWh")
+                fig_hora.update_layout(barmode='relative', title="Energía por Hora con Demanda SER", xaxis_title="Hora", yaxis_title="kWh")
 
                 ec1, ec2 = st.columns(2)
                 with ec1: st.plotly_chart(fig_pie, use_container_width=True)
                 with ec2: st.plotly_chart(fig_hora, use_container_width=True)
 
-        if st.session_state[f'play_{prefix_key}'] and "SCADA" not in modo:
-            time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
-            st.rerun()
+    if st.session_state[f'play_{prefix_key}'] and "SCADA" not in modo:
+        time.sleep(max(0.05, 0.3 / st.session_state.get(f'vs1_{prefix_key}', 1.0)))
+        st.rerun()
