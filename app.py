@@ -124,11 +124,11 @@ def main():
         st.divider()
         
         # =========================================================================
-        # 💡 INYECCIÓN: KILOMETRAJE MANUAL LIMACHE (3 DECIMALES)
+        # INGRESO MANUAL: KILOMETRAJE DE PATIO LIMACHE
         # =========================================================================
         st.subheader("Reporte Oficial EFE")
         f_vacios_efe = st.file_uploader("Km Vacío Oficial EFE (.csv o .xlsx)", accept_multiple_files=True, key="vac_efe")
-        km_limache_manual = st.number_input("➕ Km extra Patio Limache (Manual)", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje con 3 decimales no registrado por GPS en maniobras internas de Limache.")
+        km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de Shunting con 3 decimales (metros). Se simulará a 20 km/h en bloques de 1 km.")
         st.divider()
         
         st.subheader("✂️ Gestión de Flota (Split & Merge)")
@@ -181,28 +181,33 @@ def main():
     df_all = pd.concat(dfs_to_concat, ignore_index=True).drop_duplicates(subset=['_id', 't_ini', 'Via']) if dfs_to_concat else pd.DataFrame()
 
     # =========================================================================
-    # 💡 INYECCIÓN: ACOPLAR EL KILOMETRAJE MANUAL DE LIMACHE A LA FÍSICA EFE
+    # PRE-PROCESO: DESFRAGMENTAR KILÓMETROS MANUALES EN BLOQUES DE 1 KM
     # =========================================================================
     if km_limache_manual > 0 and not df_vacios_real.empty:
         fechas_efe = df_vacios_real['Fecha_str'].unique()
         filas_limache = []
         for f in fechas_efe:
             if f != '2026-01-01':
-                filas_limache.append({
-                    'Fecha_str': f,
-                    't_asigned': 0.0, 
-                    'tipo': 'XT-100', 
-                    'doble': False,
-                    'origen_txt': 'Patio Limache (Manual)',
-                    'destino_txt': 'Patio Limache (Manual)',
-                    'km_orig': KM_ACUM[20], 
-                    'km_dest': KM_ACUM[20], 
-                    'dist': km_limache_manual,
-                    'Via': 1,
-                    'motriz_num': 'Varias',
-                    'is_efe': True,
-                    'cochera': False
-                })
+                chunks = [1.0] * int(km_limache_manual)
+                remainder = km_limache_manual - int(km_limache_manual)
+                if remainder > 0: chunks.append(remainder)
+                
+                for chunk in chunks:
+                    filas_limache.append({
+                        'Fecha_str': f,
+                        't_asigned': 0.0, 
+                        'tipo': 'XT-100', 
+                        'doble': False,
+                        'origen_txt': 'Patio Limache (Manual)',
+                        'destino_txt': 'Patio Limache (Manual)',
+                        'km_orig': KM_ACUM[20], 
+                        'km_dest': KM_ACUM[20], 
+                        'dist': chunk,
+                        'Via': 1,
+                        'motriz_num': 'Maniobra',
+                        'is_efe': True,
+                        'cochera': False
+                    })
         if filas_limache:
             df_vacios_real = pd.concat([df_vacios_real, pd.DataFrame(filas_limache)], ignore_index=True)
 
@@ -484,7 +489,7 @@ def main():
             
             st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
 
-            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()))
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()), df_vacios_real=df_vacios_real)
 
     with tab_mapa:
         if df_all.empty:
@@ -578,11 +583,12 @@ def main():
         st.subheader("🚉 Auditoría de Maniobras en Vacío (Carrusel y Reposicionamientos)")
         st.markdown("Esta tabla audita todos los movimientos de los trenes sin pasajeros detectados en el sistema.")
         
-        # 💡 INYECCIÓN MANUAL PARA LA TABLA VISUAL
+        # Lógica Unificada para Mostrar la Tabla en UI
         if not df_vacios_real.empty or km_limache_manual > 0:
             if not df_vacios_real.empty:
                 st.success("✅ Usando Datos Oficiales EFE para Kilómetros en Vacío (Reemplaza estimación teórica)")
-                fechas_disp_vac = sorted(df_vacios_real['Fecha_str'].unique())
+                fechas_disp_vac = sorted([f for f in df_vacios_real['Fecha_str'].unique() if f != '2026-01-01'])
+                if not fechas_disp_vac: fechas_disp_vac = sorted(df_vacios_real['Fecha_str'].unique())
                 fecha_sel_vacios = st.selectbox("📅 Filtrar por Fecha Operativa", fechas_disp_vac, key="fs_vacios_efe")
                 df_dia_vacios = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel_vacios].copy()
             else:
@@ -602,25 +608,15 @@ def main():
                         "Tren (Motriz)": v['motriz_num'],
                         "Estación Origen": v['origen_txt'],
                         "Estación Destino": v['destino_txt'],
-                        "Tren-km (Real + Patio)": round(distancia_geo, 3),
+                        "Km Vacío": round(distancia_geo, 3), 
                         "Configuración": v['tipo']
                     })
                     
-            if df_vacios_real.empty and km_limache_manual > 0:
-                tabla_vacios.append({
-                    "Hora Oficial": "--:--:--",
-                    "Tren (Motriz)": "Múltiples",
-                    "Estación Origen": "Patio Limache (Manual)",
-                    "Estación Destino": "Patio Limache (Manual)",
-                    "Tren-km (Real + Patio)": round(km_limache_manual, 3),
-                    "Configuración": "Maniobra Shunting"
-                })
-                
             if not tabla_vacios:
                 st.info("No hay maniobras en vacío para esta fecha en el reporte oficial.")
             else:
                 df_vacios_out = pd.DataFrame(tabla_vacios).sort_values("Hora Oficial").reset_index(drop=True)
-                total_km_v = df_vacios_out["Tren-km (Real + Patio)"].sum()
+                total_km_v = df_vacios_out["Km Vacío"].sum()
                 total_mov_v = len(df_vacios_out)
                 
                 cc1, cc2 = st.columns(2)
@@ -637,7 +633,7 @@ def main():
                     mime='text/csv'
                 )
 
-        if df_vacios_real.empty:
+        if df_vacios_real.empty and km_limache_manual == 0:
             st.markdown("---")
             st.markdown("#### 📐 Estimación Teórica (Alternativa)")
             if df_all.empty:
@@ -673,27 +669,16 @@ def main():
                         "Tren (Motriz)": str(v.get('motriz_num', '')),
                         "Estación Origen": v.get('origen_txt', 'Desconocido'),
                         "Estación Destino": v.get('destino_txt', 'Desconocido'),
-                        "Tren-km (Vacío)": round(tren_km_equivalente, 3),
+                        "Km Vacío": round(tren_km_equivalente, 3), 
                         "Tipo Maniobra": "Ingreso/Salida Cochera" if v.get('cochera') else "Reposicionamiento",
                         "Configuración": f"{v.get('tipo', 'XT-100')} {'(Doble)' if v.get('doble') else '(Simple)'}"
-                    })
-                
-                if km_limache_manual > 0:
-                    tabla_vacios_teo.append({
-                        "Hora Estimada": "--:--:--",
-                        "Tren (Motriz)": "Múltiples",
-                        "Estación Origen": "Patio Limache (Manual)",
-                        "Estación Destino": "Patio Limache (Manual)",
-                        "Tren-km (Vacío)": round(km_limache_manual, 3),
-                        "Tipo Maniobra": "Maniobras Shunting",
-                        "Configuración": "No Definido"
                     })
                 
                 if not tabla_vacios_teo:
                     st.info("No se detectaron maniobras en vacío teóricas para la fecha seleccionada.")
                 else:
                     df_vacios_out_teo = pd.DataFrame(tabla_vacios_teo).sort_values("Hora Estimada").reset_index(drop=True)
-                    total_km_v_teo = df_vacios_out_teo["Tren-km (Vacío)"].sum()
+                    total_km_v_teo = df_vacios_out_teo["Km Vacío"].sum()
                     total_mov_v_teo = len(df_vacios_out_teo)
                     
                     cc1, cc2 = st.columns(2)
