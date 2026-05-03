@@ -476,9 +476,9 @@ def main():
             
             st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
 
-            # 💡 REUBICACIÓN Y MEJORA: TABLA THDR SINTÉTICO DETALLADO JUSTO ABAJO DEL BOTÓN
-            st.markdown("### 📋 THDR Sintético Detallado (Malla Operativa Generada)")
-            st.caption("Esta tabla es el equivalente matemático al THDR de EFE (Working Timetable). Contiene los tiempos **exactos** de Llegada y Salida por cada estación, calculados por el simulador considerando la masa física, fricción y límites eléctricos.")
+            # 💡 MEJORA WTT: TABLAS THDR SEPARADAS POR VÍA CON ORDEN GEOGRÁFICO
+            st.markdown("### 📋 THDR Sintético Detallado (Malla Operativa WTT)")
+            st.caption("Estas tablas son el equivalente matemático al Working Timetable de EFE. Los tiempos de Llegada y Salida por estación son calculados considerando fricción, masa y límites eléctricos. **Las tablas están separadas direccionalmente para uso en CTC.**")
             
             df_sint_show = df_final_mem.copy()
             df_sint_show['Hora_Salida'] = df_sint_show['t_ini'].apply(mins_to_time_str)
@@ -494,16 +494,15 @@ def main():
                 for i_est in range(N_EST):
                     km_est = KM_ACUM[i_est]
                     nombre_est = PAX_COLS[i_est]
-                    # Solo calcula estaciones dentro de la ruta del tren
                     if min(k_o, k_d) - 0.1 <= km_est <= max(k_o, k_d) + 0.1:
                         frac = _fraction_time_thdr(km_est, k_o, k_d, use_rm)
                         t_pass = t_i + frac * (t_f - t_i)
                         
-                        if abs(km_est - k_o) < 0.1: # Estación de Origen
+                        if abs(km_est - k_o) < 0.1: 
                             t_lleg, t_sal = t_i, t_i
-                        elif abs(km_est - k_d) < 0.1: # Estación Destino
+                        elif abs(km_est - k_d) < 0.1: 
                             t_lleg, t_sal = t_f, t_f
-                        else: # Estación Intermedia (Asume 25s de Dwell estandar)
+                        else: 
                             t_lleg = t_pass - (12.5 / 60.0)
                             t_sal = t_pass + (12.5 / 60.0)
                             
@@ -513,25 +512,47 @@ def main():
                         df_sint_show.at[idx, f"{nombre_est}_Lleg"] = "—"
                         df_sint_show.at[idx, f"{nombre_est}_Sal"] = "—"
             
-            cols_sint_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Via', 'Hora_Salida', 'Hora_Llegada', 'TDV (min)', 'pax_abordo']
-            # Agregar dinámicamente las columnas de estación
-            for est in PAX_COLS:
-                cols_sint_export.append(f"{est}_Lleg")
-                cols_sint_export.append(f"{est}_Sal")
+            cols_base_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Hora_Salida', 'Hora_Llegada', 'TDV (min)', 'pax_abordo']
+            
+            # 🔵 SEPARACIÓN VÍA 1 (Puerto -> Limache)
+            df_v1 = df_sint_show[df_sint_show['Via'] == 1].copy()
+            st.markdown("#### 🔵 Vía 1 (Puerto → Limache)")
+            if not df_v1.empty:
+                cols_v1 = cols_base_export.copy()
+                for est in PAX_COLS: # Orden Normal (Puerto a Limache)
+                    cols_v1.extend([f"{est}_Lleg", f"{est}_Sal"])
+                cols_v1_exist = [c for c in cols_v1 if c in df_v1.columns]
                 
-            cols_sint_exist = [c for c in cols_sint_export if c in df_sint_show.columns]
-            
-            # Mostrar la tabla expandida
-            st.dataframe(df_sint_show[cols_sint_exist], use_container_width=True)
-            
-            # Botón de Descarga
-            csv_sintetico = df_sint_show[cols_sint_exist].to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Descargar THDR Sintético Detallado (CSV)",
-                data=csv_sintetico,
-                file_name=f"THDR_Sintetico_Detallado_V118.csv",
-                mime='text/csv'
-            )
+                st.dataframe(df_v1[cols_v1_exist], use_container_width=True)
+                csv_v1 = df_v1[cols_v1_exist].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descargar Vía 1 (CSV)",
+                    data=csv_v1,
+                    file_name="THDR_Sintetico_V118_V1.csv",
+                    mime='text/csv'
+                )
+            else:
+                st.info("No hay servicios planificados en sentido Vía 1.")
+
+            # 🔴 SEPARACIÓN VÍA 2 (Limache -> Puerto)
+            df_v2 = df_sint_show[df_sint_show['Via'] == 2].copy()
+            st.markdown("#### 🔴 Vía 2 (Limache → Puerto)")
+            if not df_v2.empty:
+                cols_v2 = cols_base_export.copy()
+                for est in reversed(PAX_COLS): # Orden Inverso (Limache a Puerto)
+                    cols_v2.extend([f"{est}_Lleg", f"{est}_Sal"])
+                cols_v2_exist = [c for c in cols_v2 if c in df_v2.columns]
+                
+                st.dataframe(df_v2[cols_v2_exist], use_container_width=True)
+                csv_v2 = df_v2[cols_v2_exist].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descargar Vía 2 (CSV)",
+                    data=csv_v2,
+                    file_name="THDR_Sintetico_V118_V2.csv",
+                    mime='text/csv'
+                )
+            else:
+                st.info("No hay servicios planificados en sentido Vía 2.")
             
             st.divider()
 
