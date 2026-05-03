@@ -476,7 +476,7 @@ def main():
             
             st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
 
-            # 💡 MEJORA WTT: TABLAS THDR SEPARADAS POR VÍA CON ORDEN GEOGRÁFICO
+            # 💡 MEJORA WTT CON EXPANDERS (Boton minimizar): TABLAS THDR SEPARADAS POR VÍA
             st.markdown("### 📋 THDR Sintético Detallado (Malla Operativa WTT)")
             st.caption("Estas tablas son el equivalente matemático al Working Timetable de EFE. Los tiempos de Llegada y Salida por estación son calculados considerando fricción, masa y límites eléctricos. **Las tablas están separadas direccionalmente para uso en CTC.**")
             
@@ -514,7 +514,7 @@ def main():
             
             cols_base_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Hora_Salida', 'Hora_Llegada', 'TDV (min)', 'pax_abordo']
             
-            # 🔵 SEPARACIÓN VÍA 1 (Puerto -> Limache)
+            # 🔵 SEPARACIÓN VÍA 1 (Puerto -> Limache) EN EXPANDER
             df_v1 = df_sint_show[df_sint_show['Via'] == 1].copy()
             st.markdown("#### 🔵 Vía 1 (Puerto → Limache)")
             if not df_v1.empty:
@@ -523,18 +523,19 @@ def main():
                     cols_v1.extend([f"{est}_Lleg", f"{est}_Sal"])
                 cols_v1_exist = [c for c in cols_v1 if c in df_v1.columns]
                 
-                st.dataframe(df_v1[cols_v1_exist], use_container_width=True)
-                csv_v1 = df_v1[cols_v1_exist].to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Descargar Vía 1 (CSV)",
-                    data=csv_v1,
-                    file_name="THDR_Sintetico_V118_V1.csv",
-                    mime='text/csv'
-                )
+                with st.expander("👀 Ver / Ocultar Malla Operativa Vía 1", expanded=False):
+                    st.dataframe(df_v1[cols_v1_exist], use_container_width=True)
+                    csv_v1 = df_v1[cols_v1_exist].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Descargar Vía 1 (CSV)",
+                        data=csv_v1,
+                        file_name="THDR_Sintetico_V118_V1.csv",
+                        mime='text/csv'
+                    )
             else:
                 st.info("No hay servicios planificados en sentido Vía 1.")
 
-            # 🔴 SEPARACIÓN VÍA 2 (Limache -> Puerto)
+            # 🔴 SEPARACIÓN VÍA 2 (Limache -> Puerto) EN EXPANDER
             df_v2 = df_sint_show[df_sint_show['Via'] == 2].copy()
             st.markdown("#### 🔴 Vía 2 (Limache → Puerto)")
             if not df_v2.empty:
@@ -543,14 +544,15 @@ def main():
                     cols_v2.extend([f"{est}_Lleg", f"{est}_Sal"])
                 cols_v2_exist = [c for c in cols_v2 if c in df_v2.columns]
                 
-                st.dataframe(df_v2[cols_v2_exist], use_container_width=True)
-                csv_v2 = df_v2[cols_v2_exist].to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Descargar Vía 2 (CSV)",
-                    data=csv_v2,
-                    file_name="THDR_Sintetico_V118_V2.csv",
-                    mime='text/csv'
-                )
+                with st.expander("👀 Ver / Ocultar Malla Operativa Vía 2", expanded=False):
+                    st.dataframe(df_v2[cols_v2_exist], use_container_width=True)
+                    csv_v2 = df_v2[cols_v2_exist].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Descargar Vía 2 (CSV)",
+                        data=csv_v2,
+                        file_name="THDR_Sintetico_V118_V2.csv",
+                        mime='text/csv'
+                    )
             else:
                 st.info("No hay servicios planificados en sentido Vía 2.")
             
