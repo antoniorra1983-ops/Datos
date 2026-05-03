@@ -1,7 +1,18 @@
 import numpy as np
 import pandas as pd
+import config
 from config import *
 from etl_parser import calc_tren_km_real_general, get_pax_at_km
+
+# 💡 BLINDAJE DE VARIABLES PRIVADAS Y FALTANTES
+# Extraemos variables de config evitando el NameError si no existen o tienen "_"
+ELEV_KM_DEF = getattr(config, '_ELEV_KM', getattr(config, 'ELEV_KM', []))
+ELEV_M_DEF  = getattr(config, '_ELEV_M', getattr(config, 'ELEV_M', []))
+AUX_HVAC_DEF = getattr(config, '_AUX_HVAC_HORA', getattr(config, 'AUX_HVAC_HORA', {}))
+FRAC_BASE_DEF = getattr(config, '_FRAC_BASE', getattr(config, 'FRAC_BASE', 0.3))
+FRAC_HVAC_DEF = getattr(config, '_FRAC_HVAC', getattr(config, 'FRAC_HVAC', 0.7))
+FACTOR_DWELL_DEF = getattr(config, '_FACTOR_DWELL_COMPRESOR', getattr(config, 'FACTOR_DWELL_COMPRESOR', 1.08))
+CURVAS_DEF = getattr(config, 'CURVAS_MERVAL', [])
 
 def _build_profile(use_rm, via):
     segs = SPEED_PROFILE if via == 1 else list(reversed(SPEED_PROFILE))
@@ -70,14 +81,14 @@ def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, est
     if estado_marcha == "WAKE_UP": return aux_kw_nominal * 0.65
     elif estado_marcha == "SHUT_DOWN": return aux_kw_nominal * 0.25
 
-    perfil = AUX_HVAC_HORA.get(estacion_anio, AUX_HVAC_HORA["primavera"])
-    f_hvac = perfil[int(hora_decimal) % 24]
+    perfil = AUX_HVAC_DEF.get(estacion_anio, AUX_HVAC_DEF.get("primavera", []))
+    f_hvac = perfil[int(hora_decimal) % 24] if perfil else 0.5
     if cap_max > 0:
         ocup = min(1.0, pax_abordo / cap_max)
         f_ocup = 1.0 + 0.05 * ocup if estacion_anio == "verano" else (1.0 - 0.12 * ocup if estacion_anio == "invierno" else 1.0 - 0.06 * ocup)
     else: f_ocup = 1.0
     
-    return (aux_kw_nominal * FRAC_BASE) + (aux_kw_nominal * FRAC_HVAC * f_hvac * f_ocup * (FACTOR_DWELL_COMPRESOR if estado_marcha == "DWELL" else 1.0))
+    return (aux_kw_nominal * FRAC_BASE_DEF) + (aux_kw_nominal * FRAC_HVAC_DEF * f_hvac * f_ocup * (FACTOR_DWELL_DEF if estado_marcha == "DWELL" else 1.0))
 
 def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_trac, use_rm, use_pend, nodos=None, pax_dict=None, pax_abordo=0, v_consigna_override=None, maniobra=None, estacion_anio="primavera", t_ini_mins=0.0, es_vacio=False):
     f = FLOTA.get(tipo_tren, FLOTA["XT-100"])
@@ -108,10 +119,18 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             if es_vacio and (min([abs(km_actual - k) for k in KM_ACUM]) * 1000.0 <= 120.0 or min([(k - km_actual if via_op == 1 and k > km_actual + 0.01 else km_actual - k if via_op == 2 and k < km_actual - 0.01 else 9999000.0)*1000.0 for k in KM_ACUM]) <= ((v_ms**2 - (30.0/3.6)**2) / (2 * (f['a_freno_ms2'] * 0.85))) + 50.0 if v_ms > 30.0/3.6 else 50.0): v_cons_kmh = min(v_cons_kmh, 30.0)
             
             v_kmh = v_ms * 3.6
-            f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
-            f_pend = next((DAVIS_E_N_PERMIL * ((_ELEV_M[j] - _ELEV_M[j-1]) / max(0.001, (_ELEV_KM[j] - _ELEV_KM[j-1])*1000)) * 1000 * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0) for j in range(1, len(_ELEV_KM)) if _ELEV_KM[j-1] <= km_actual <= _ELEV_KM[j] or (j == len(_ELEV_KM)-1 and km_actual > _ELEV_KM[j])), 0.0) if use_pend else 0.0
+            if n_uni == 2: f_davis = (f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))
+            else: f_davis = f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2)
             
-            f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_MERVAL if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini)), 0.0)
+            f_pend = 0.0
+            if use_pend and len(ELEV_KM_DEF) > 0:
+                for j in range(1, len(ELEV_KM_DEF)):
+                    if ELEV_KM_DEF[j-1] <= km_actual <= ELEV_KM_DEF[j] or (j == len(ELEV_KM_DEF)-1 and km_actual > ELEV_KM_DEF[j]):
+                        pend = ((ELEV_M_DEF[j] - ELEV_M_DEF[j-1]) / max(0.001, (ELEV_KM_DEF[j] - ELEV_KM_DEF[j-1])*1000)) * 1000
+                        f_pend = DAVIS_E_N_PERMIL * pend * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0)
+                        break
+                        
+            f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_DEF if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini)), 0.0)
             
             a_freno_op = f['a_freno_ms2'] * 0.9 
             f_trac_bruta = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
