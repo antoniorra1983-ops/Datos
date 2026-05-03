@@ -1,4 +1,4 @@
-import streamlit as st
+}import streamlit as st
 import pandas as pd
 import numpy as np
 import re
@@ -131,8 +131,7 @@ def main():
         
         st.subheader("Reporte Oficial EFE")
         f_vacios_efe = st.file_uploader("Km Vacío Oficial EFE (.csv o .xlsx)", accept_multiple_files=True, key="vac_efe")
-        # INYECCIÓN DEL KILOMETRAJE MANUAL AL CONTROLADOR
-        km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de maniobras en Limache con 3 decimales (metros).")
+        km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de Shunting con 3 decimales (metros).")
         st.divider()
         
         st.subheader("✂️ Gestión de Flota (Split & Merge)")
@@ -584,7 +583,6 @@ def main():
                         "Configuración": str(v.get('tipo', 'XT-100'))
                     })
             
-            # INYECCIÓN VISUAL DEL KILOMETRAJE MANUAL EN LA TABLA
             if km_limache_manual > 0:
                 tabla_vacios.append({
                     "Hora Oficial": "00:00:00 (Diario)",
