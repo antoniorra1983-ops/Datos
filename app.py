@@ -36,6 +36,24 @@ def leer_github(url):
             return nm, r.read()
     except Exception as e: return None, str(e)
 
+# 💡 FUNCIÓN NUEVA: Interpolación Cinemática Exacta para Tiempos Intermedios
+def _fraction_time_thdr(km_point, km_orig, km_dest, use_rm):
+    segs = SPEED_PROFILE
+    km_pts = [segs[0][0]] + [s[1] for s in segs]
+    t_pts = [0.0]
+    cum_t = 0.0
+    for ki, kf, dm, vn, vr in segs:
+        v = max(5.0, vr if use_rm else vn)
+        cum_t += (dm / 1000.0) / v * 3600.0
+        t_pts.append(cum_t)
+    km_arr = np.array(km_pts) / 1000.0
+    t_arr = np.array(t_pts)
+    t_o = float(np.interp(km_orig, km_arr, t_arr))
+    t_d = float(np.interp(km_dest, km_arr, t_arr))
+    t_p = float(np.interp(km_point, km_arr, t_arr))
+    if abs(t_d - t_o) < 0.001: return 0.0
+    return abs(t_p - t_o) / abs(t_d - t_o)
+
 @st.cache_data(show_spinner="Procesando THDR Estándar…")
 def build_thdr_v71(blobs_v1, blobs_v2):
     all_parts, err = [], []
@@ -255,7 +273,7 @@ def main():
         fechas = []
 
     # =========================================================================
-    # ESTRUCTURA DE TABS (CON TABLAS RESTAURADAS)
+    # ESTRUCTURA DE TABS
     # =========================================================================
     tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros y THDR", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
     
@@ -458,9 +476,9 @@ def main():
             
             st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
 
-            # 💡 REUBICACIÓN Y MEJORA: TABLA THDR SINTÉTICO JUSTO ABAJO DEL BOTÓN
-            st.markdown("### 📋 THDR Sintético (Malla Operativa Generada)")
-            st.caption("Esta tabla es el equivalente matemático al THDR de EFE. Contiene los tiempos **exactos** de llegada calculados por el simulador considerando la masa física, el Tiempo de Viaje (TDV) y los límites eléctricos.")
+            # 💡 REUBICACIÓN Y MEJORA: TABLA THDR SINTÉTICO DETALLADO JUSTO ABAJO DEL BOTÓN
+            st.markdown("### 📋 THDR Sintético Detallado (Malla Operativa Generada)")
+            st.caption("Esta tabla es el equivalente matemático al THDR de EFE (Working Timetable). Contiene los tiempos **exactos** de Llegada y Salida por cada estación, calculados por el simulador considerando la masa física, fricción y límites eléctricos.")
             
             df_sint_show = df_final_mem.copy()
             df_sint_show['Hora_Salida'] = df_sint_show['t_ini'].apply(mins_to_time_str)
@@ -468,16 +486,50 @@ def main():
             df_sint_show['TDV (min)'] = (df_sint_show['t_fin'] - df_sint_show['t_ini']).round(1)
             df_sint_show['Configuración'] = df_sint_show['doble'].apply(lambda x: 'Doble' if x else 'Simple')
             
+            # --- CÁLCULO DE LLEGADA/SALIDA EXACTA POR ESTACIÓN ---
+            for idx, row in df_sint_show.iterrows():
+                k_o, k_d = row['km_orig'], row['km_dest']
+                t_i, t_f = row['t_ini'], row['t_fin']
+                via_tren = row['Via']
+                for i_est in range(N_EST):
+                    km_est = KM_ACUM[i_est]
+                    nombre_est = PAX_COLS[i_est]
+                    # Solo calcula estaciones dentro de la ruta del tren
+                    if min(k_o, k_d) - 0.1 <= km_est <= max(k_o, k_d) + 0.1:
+                        frac = _fraction_time_thdr(km_est, k_o, k_d, use_rm)
+                        t_pass = t_i + frac * (t_f - t_i)
+                        
+                        if abs(km_est - k_o) < 0.1: # Estación de Origen
+                            t_lleg, t_sal = t_i, t_i
+                        elif abs(km_est - k_d) < 0.1: # Estación Destino
+                            t_lleg, t_sal = t_f, t_f
+                        else: # Estación Intermedia (Asume 25s de Dwell estandar)
+                            t_lleg = t_pass - (12.5 / 60.0)
+                            t_sal = t_pass + (12.5 / 60.0)
+                            
+                        df_sint_show.at[idx, f"{nombre_est}_Lleg"] = mins_to_time_str(t_lleg)
+                        df_sint_show.at[idx, f"{nombre_est}_Sal"] = mins_to_time_str(t_sal)
+                    else:
+                        df_sint_show.at[idx, f"{nombre_est}_Lleg"] = "—"
+                        df_sint_show.at[idx, f"{nombre_est}_Sal"] = "—"
+            
             cols_sint_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Via', 'Hora_Salida', 'Hora_Llegada', 'TDV (min)', 'pax_abordo']
+            # Agregar dinámicamente las columnas de estación
+            for est in PAX_COLS:
+                cols_sint_export.append(f"{est}_Lleg")
+                cols_sint_export.append(f"{est}_Sal")
+                
             cols_sint_exist = [c for c in cols_sint_export if c in df_sint_show.columns]
             
+            # Mostrar la tabla expandida
             st.dataframe(df_sint_show[cols_sint_exist], use_container_width=True)
             
+            # Botón de Descarga
             csv_sintetico = df_sint_show[cols_sint_exist].to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Descargar THDR Sintético Oficial (CSV)",
+                label="📥 Descargar THDR Sintético Detallado (CSV)",
                 data=csv_sintetico,
-                file_name=f"THDR_Sintetico_V118.csv",
+                file_name=f"THDR_Sintetico_Detallado_V118.csv",
                 mime='text/csv'
             )
             
@@ -573,7 +625,6 @@ def main():
                     else:
                         st.info("No hay registros de pasajeros para la Vía 2 en esta selección.")
 
-        # 💡 RESTAURACIÓN: TABLA AUDITORÍA THDR HISTÓRICO (La otra que borré por error)
         st.divider()
         st.markdown("### 🚄 Auditoría de Base de Datos THDR (Histórico)")
         st.caption("Esta tabla muestra cómo el sistema analizó el archivo Excel crudo del THDR Histórico subido.")
