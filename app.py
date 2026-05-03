@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
+import time
+import unicodedata
+from io import BytesIO
+from datetime import datetime, date, timedelta
+import plotly.graph_objects as go
 
 from config import *
 from etl_parser import (
@@ -125,6 +131,7 @@ def main():
         
         st.subheader("Reporte Oficial EFE")
         f_vacios_efe = st.file_uploader("Km Vacío Oficial EFE (.csv o .xlsx)", accept_multiple_files=True, key="vac_efe")
+        # 💡 CONTROL: Parámetro para inyectar kilómetros manuales a nivel global
         km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de Shunting con 3 decimales (metros). Se simulará a 20 km/h en bloques de 1 km.")
         st.divider()
         
@@ -549,69 +556,119 @@ def main():
         st.subheader("🚉 Auditoría de Maniobras en Vacío (Carrusel y Reposicionamientos)")
         st.markdown("Esta tabla audita todos los movimientos de los trenes sin pasajeros detectados en el sistema.")
         
-        if not df_vacios_real.empty:
-            st.success("✅ Usando Datos Oficiales EFE para Kilómetros en Vacío (Reemplaza estimación teórica)")
-            fechas_disp_vac = sorted([f for f in df_vacios_real['Fecha_str'].unique() if f != '2026-01-01'])
-            if not fechas_disp_vac: fechas_disp_vac = sorted(df_vacios_real['Fecha_str'].unique())
-            fecha_sel_vacios = st.selectbox("📅 Filtrar por Fecha Operativa", fechas_disp_vac, key="fs_vacios_efe")
-            df_dia_vacios = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel_vacios].copy()
-        else:
-            st.info("ℹ️ Estimación Teórica de Vacíos (A la espera del Reporte Oficial EFE)")
-            fecha_sel_vacios = st.selectbox("📅 Filtrar por Fecha Operativa", fechas if fechas else ["2026-01-01"], key="fs_vacios_efe_manual")
-            if not df_all.empty:
-                df_dia_vacios_teo = df_all[df_all['Fecha_str'] == fecha_sel_vacios].copy()
-                vacios_dict_list = get_vacios_dia(df_dia_vacios_teo)
-                df_dia_vacios = pd.DataFrame(vacios_dict_list)
+        if not df_vacios_real.empty or km_limache_manual > 0:
+            if not df_vacios_real.empty:
+                st.success("✅ Usando Datos Oficiales EFE para Kilómetros en Vacío (Reemplaza estimación teórica)")
+                fechas_disp_vac = sorted([f for f in df_vacios_real['Fecha_str'].unique() if f != '2026-01-01'])
+                if not fechas_disp_vac: fechas_disp_vac = sorted(df_vacios_real['Fecha_str'].unique())
+                fecha_sel_vacios = st.selectbox("📅 Filtrar por Fecha Operativa", fechas_disp_vac, key="fs_vacios_efe")
+                df_dia_vacios = df_vacios_real[df_vacios_real['Fecha_str'] == fecha_sel_vacios].copy()
             else:
+                st.info("ℹ️ Mostrando Kilómetros manuales (A la espera del Reporte Oficial EFE para reemplazar teóricos)")
+                fecha_sel_vacios = st.selectbox("📅 Filtrar por Fecha Operativa", fechas if fechas else ["2026-01-01"], key="fs_vacios_efe_manual")
                 df_dia_vacios = pd.DataFrame()
                 
-        tabla_vacios = []
-        if not df_dia_vacios.empty:
-            for _, v in df_dia_vacios.iterrows():
-                distancia_geo = v.get('dist', 0.0)
-                if 'COCHERA' in str(v.get('origen_txt', '')).upper() or 'COCHERA' in str(v.get('destino_txt', '')).upper():
-                    distancia_geo += 1.0 
-                
+            tabla_vacios = []
+            if not df_dia_vacios.empty:
+                for _, v in df_dia_vacios.iterrows():
+                    distancia_geo = v['dist']
+                    if 'COCHERA' in str(v.get('origen_txt', '')).upper() or 'COCHERA' in str(v.get('destino_txt', '')).upper():
+                        distancia_geo += 1.0 
+                    
+                    tabla_vacios.append({
+                        "Hora Oficial": "--:--:--" if "Manual" in str(v.get('origen_txt', '')) else mins_to_time_str(v.get('t_asigned', 0)),
+                        "Tren (Motriz)": str(v.get('motriz_num', '')),
+                        "Estación Origen": str(v.get('origen_txt', '')),
+                        "Estación Destino": str(v.get('destino_txt', '')),
+                        "Km Vacío": round(distancia_geo, 3), 
+                        "Configuración": str(v.get('tipo', 'XT-100'))
+                    })
+            
+            if km_limache_manual > 0:
                 tabla_vacios.append({
-                    "Hora Oficial": "--:--:--" if "Manual" in str(v.get('origen_txt', '')) else mins_to_time_str(v.get('t_asigned', 0)),
-                    "Tren (Motriz)": str(v.get('motriz_num', '')),
-                    "Estación Origen": str(v.get('origen_txt', '')),
-                    "Estación Destino": str(v.get('destino_txt', '')),
-                    "Km Vacío": round(distancia_geo, 3), 
-                    "Configuración": str(v.get('tipo', 'XT-100'))
+                    "Hora Oficial": "00:00:00 (Diario)",
+                    "Tren (Motriz)": "Shunting",
+                    "Estación Origen": "Patio Limache (Manual)",
+                    "Estación Destino": "Patio Limache (Manual)",
+                    "Km Vacío": round(km_limache_manual, 3), 
+                    "Configuración": "XT-100"
                 })
-        
-        # Inyección visual directa a la tabla del patio manual Limache
-        if km_limache_manual > 0:
-            tabla_vacios.append({
-                "Hora Oficial": "00:00:00 (Diario)",
-                "Tren (Motriz)": "Shunting",
-                "Estación Origen": "Patio Limache (Manual)",
-                "Estación Destino": "Patio Limache (Manual)",
-                "Km Vacío": round(km_limache_manual, 3), 
-                "Configuración": "XT-100"
-            })
+                    
+            if not tabla_vacios:
+                st.info("No hay maniobras en vacío para esta fecha en el reporte oficial.")
+            else:
+                df_vacios_out = pd.DataFrame(tabla_vacios).sort_values("Hora Oficial").reset_index(drop=True)
+                total_km_v = df_vacios_out["Km Vacío"].sum()
+                total_mov_v = len(df_vacios_out)
                 
-        if not tabla_vacios:
-            st.info("No hay maniobras en vacío para esta fecha en el reporte oficial.")
-        else:
-            df_vacios_out = pd.DataFrame(tabla_vacios).sort_values("Hora Oficial").reset_index(drop=True)
-            total_km_v = df_vacios_out["Km Vacío"].sum()
-            total_mov_v = len(df_vacios_out)
-            
-            cc1, cc2 = st.columns(2)
-            cc1.metric("Total Movimientos en Vacío", total_mov_v)
-            cc2.metric("Kilometraje Total (Tren-km Vacío)", f"{total_km_v:.3f} km")
-            st.divider()
-            st.dataframe(df_vacios_out, use_container_width=True)
-            
-            csv_v = df_vacios_out.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Descargar Registro de Maniobras",
-                data=csv_v,
-                file_name=f'Maniobras_Vacio_MERVAL_{fecha_sel_vacios}.csv',
-                mime='text/csv'
-            )
+                cc1, cc2 = st.columns(2)
+                cc1.metric("Total Movimientos Oficiales", total_mov_v)
+                cc2.metric("Kilometraje Físico Computado", f"{total_km_v:.3f} km")
+                st.divider()
+                st.dataframe(df_vacios_out, use_container_width=True)
+                
+                csv_v = df_vacios_out.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descargar Registro de Maniobras Oficial",
+                    data=csv_v,
+                    file_name=f'Maniobras_Vacio_Oficial_MERVAL_{fecha_sel_vacios}.csv',
+                    mime='text/csv'
+                )
+
+        if df_vacios_real.empty and km_limache_manual == 0:
+            st.markdown("---")
+            st.markdown("#### 📐 Estimación Teórica (Alternativa)")
+            if df_all.empty:
+                st.warning("⚠️ No hay archivos THDR cargados para estimar maniobras en vacío teóricas.")
+            else:
+                fecha_sel_vacios_teo = st.selectbox("📅 Filtrar por Fecha Teórica", fechas, key="fs_vacios_teo")
+                df_dia_vacios_teo = df_all[df_all['Fecha_str'] == fecha_sel_vacios_teo].copy()
+                vacios_list = get_vacios_dia(df_dia_vacios_teo)
+                
+                for idx, row in df_dia_vacios_teo[df_dia_vacios_teo['maniobra'].notnull()].iterrows():
+                    man = row['maniobra']
+                    t_arr_bto = row['t_ini'] + 40.0 if row['Via'] == 1 else row['t_ini'] + 20.0
+                    t_arr_sa = row['t_ini'] + 47.0 if row['Via'] == 1 else row['t_ini'] + 13.0
+                    dist_sa_eb = abs(KM_ACUM[18] - KM_ACUM[14])
+                    
+                    if man == 'CORTE_BTO' or man == 'CORTE_PU_SA_BTO':
+                        vacios_list.append({'t_asigned': t_arr_bto, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'El Belloto', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                    elif man == 'ACOPLE_BTO':
+                        vacios_list.append({'t_asigned': t_arr_bto - 5.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'El Belloto', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14]})
+                    elif man == 'CORTE_SA':
+                        vacios_list.append({'t_asigned': t_arr_sa, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller EB', 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14]})
+                    elif man == 'ACOPLE_SA':
+                        vacios_list.append({'t_asigned': t_arr_sa - 20.0, 'tipo': row['tipo_tren'], 'doble': False, 'cochera': True, 'dist': dist_sa_eb + 2.0, 'motriz_num': f"{row.get('motriz_num', '')}-B", 'origen_txt': 'Taller EB', 'destino_txt': 'Sargento Aldea', 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18]})
+
+                tabla_vacios_teo = []
+                for v in vacios_list:
+                    factor_flota = 2 if v.get('doble', False) else 1
+                    distancia_geo = v.get('dist', 0)
+                    tren_km_equivalente = distancia_geo * factor_flota
+                    
+                    tabla_vacios_teo.append({
+                        "Hora Estimada": mins_to_time_str(v['t_asigned']),
+                        "Tren (Motriz)": str(v.get('motriz_num', '')),
+                        "Estación Origen": v.get('origen_txt', 'Desconocido'),
+                        "Estación Destino": v.get('destino_txt', 'Desconocido'),
+                        "Km Vacío": round(tren_km_equivalente, 3), 
+                        "Tipo Maniobra": "Ingreso/Salida Cochera" if v.get('cochera') else "Reposicionamiento",
+                        "Configuración": f"{v.get('tipo', 'XT-100')} {'(Doble)' if v.get('doble') else '(Simple)'}"
+                    })
+                
+                if not tabla_vacios_teo:
+                    st.info("No se detectaron maniobras en vacío teóricas para la fecha seleccionada.")
+                else:
+                    df_vacios_out_teo = pd.DataFrame(tabla_vacios_teo).sort_values("Hora Estimada").reset_index(drop=True)
+                    total_km_v_teo = df_vacios_out_teo["Km Vacío"].sum()
+                    total_mov_v_teo = len(df_vacios_out_teo)
+                    
+                    cc1, cc2 = st.columns(2)
+                    cc1.metric("Total Movimientos en Vacío", total_mov_v_teo)
+                    cc2.metric("Kilometraje Total en Vacío (Tren-km)", f"{total_km_v_teo:.3f} km")
+                    st.divider()
+                    
+                    st.dataframe(df_vacios_out_teo, use_container_width=True)
 
 if __name__ == "__main__": 
     main()
