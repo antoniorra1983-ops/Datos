@@ -6,9 +6,81 @@ import time
 import json
 import plotly.graph_objects as go
 from config import *
-from etl_parser import mins_to_time_str, get_pax_at_km, get_vacios_dia
 from red_electrica import calcular_flujo_ac_nodo, distribuir_potencia_sers_kw, distribuir_energia_sers
 from motor_fisico import km_at_t, vel_at_km, get_train_state_and_speed, calcular_aux_dinamico, simular_tramo_termodinamico
+
+# =============================================================================
+# FUNCIONES DE APOYO VISUAL ENCAPSULADAS (BLINDAJE ANTI-ERRORES)
+# =============================================================================
+def mins_to_time_str(mins):
+    if pd.isna(mins): return '--:--:--'
+    try:
+        m_val = float(mins)
+        while m_val >= 1440: m_val -= 1440
+        while m_val < 0: m_val += 1440
+        h = int(m_val // 60)
+        m = int(m_val % 60)
+        s = int(round((m_val * 60) % 60))
+        if s == 60: s = 0; m += 1
+        if m == 60: m = 0; h += 1
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    except: return '--:--:--'
+
+def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
+    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
+    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
+    pax_val = 0
+    if via == 1:
+        for i in range(N_EST):
+            if km_pos >= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    else:
+        for i in range(N_EST - 1, -1, -1):
+            if km_pos <= KM_ACUM[i]:
+                val = pax_d.get(PAX_COLS[i])
+                if val is not None: pax_val = val
+            else: break
+    return int(pax_val)
+
+def get_vacios_dia(df_dia):
+    vacios = []
+    if df_dia.empty: return vacios
+    agrupador = 'motriz_num' if 'motriz_num' in df_dia.columns else 'num_servicio'
+    
+    def _get_est_name(km):
+        if pd.isna(km): return "Desconocido"
+        dists = [abs(km - k) for k in KM_ACUM]
+        idx = int(np.argmin(dists))
+        if dists[idx] <= 1.5: return ESTACIONES[idx]
+        return f"km {km:.1f}"
+        
+    for tren, group in df_dia.sort_values('t_ini').groupby(agrupador):
+        if str(tren).strip() == '' or str(tren).strip() == 'nan': continue
+        viajes = group.to_dict('records')
+        if not viajes: continue
+        
+        p = viajes[0]
+        if abs(p.get('km_orig', 0) - KM_ACUM[14]) < 0.1:
+            vacios.append({'t_asigned': p['t_ini'] - 10, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'El Belloto', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
+        elif abs(p.get('km_orig', 0) - KM_ACUM[18]) < 0.1:
+            vacios.append({'t_asigned': p['t_ini'] - 20, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'Sargento Aldea', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
+            
+        for i in range(len(viajes) - 1):
+            actual, sig = viajes[i], viajes[i+1]
+            k_o, k_d = actual.get('km_dest', 0), sig.get('km_orig', 0)
+            dist = abs(k_o - k_d)
+            if 0.1 < dist <= 20.0:
+                vacios.append({'t_asigned': actual['t_fin'] + 5, 'tipo': actual.get('tipo_tren', 'XT-100'), 'doble': actual.get('doble', False), 'cochera': False, 'km_orig': k_o, 'km_dest': k_d, 'dist': dist, 'motriz_num': tren, 'origen_txt': _get_est_name(k_o), 'destino_txt': _get_est_name(k_d), 'servicio_previo': str(actual.get('num_servicio', '')), 'servicio_siguiente': str(sig.get('num_servicio', ''))})
+                
+        u = viajes[-1]
+        if abs(u.get('km_dest', 0) - KM_ACUM[14]) < 0.1:
+            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'El Belloto', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
+        elif abs(u.get('km_dest', 0) - KM_ACUM[18]) < 0.1:
+            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
+            
+    return vacios
 
 # =============================================================================
 # MOTOR VISUAL 1: RENDERIZADO ESTÁTICO PYTHON (DOM SVG INYECTADO)
@@ -145,6 +217,10 @@ def draw_diagram_svg(df_act_plot, ser_accum_plot, seat_accum_plot, hora_str, tit
 # MOTOR VISUAL 2: SCADA JAVASCRIPT (CLIENT-SIDE RENDERING + POPUPS)
 # =============================================================================
 def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titulo_extra, active_sers_list, gap_vias, use_rm):
+    """
+    Empaqueta el perfil matemático y genera el Iframe HTML.
+    JS lee el JSON e interpola las posiciones, tooltips y pasajeros dinámicos a 60 FPS.
+    """
     trips_data = []
     
     for _, row in df_dia_e.iterrows():
@@ -324,6 +400,7 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
+    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -373,6 +450,31 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
     </html>
     """
     return html_template, H
+
+def render_dashboard_energia_v112(df_dia_e, active_sers, fecha_sel, hora_m1, total_ser_kwh_44kv=0.0, seat_accum=0.0, vacio_kwh_total=0.0, vacio_km_total=0.0):
+    if df_dia_e is None or df_dia_e.empty: st.info("Sin datos termodinámicos."); return
+    t_trac    = df_dia_e.get('kwh_viaje_trac',  pd.Series(dtype=float)).sum()
+    t_aux     = df_dia_e.get('kwh_viaje_aux',   pd.Series(dtype=float)).sum()
+    t_regen   = df_dia_e.get('kwh_viaje_regen', pd.Series(dtype=float)).sum()
+    t_reostat = df_dia_e.get('kwh_reostato',    pd.Series(dtype=float)).sum()
+    t_neto    = df_dia_e.get('kwh_viaje_neto',  pd.Series(dtype=float)).sum()
+    tren_km_t = df_dia_e.get('tren_km',         pd.Series(dtype=float)).sum()
+    regen_bruta = t_regen + t_reostat
+    tasa_global = (t_regen/regen_bruta*100) if regen_bruta > 0 else 0.0
+    ide_global  = t_neto/max(0.1, tren_km_t)
+    hora_str    = f"{int(hora_m1)//60:02d}:{int(hora_m1)%60:02d}"
+    eta_prom = df_dia_e.get('eta_regen_util', pd.Series(dtype=float)).mean() if 'eta_regen_util' in df_dia_e.columns else 0.0
+
+    st.markdown(f"### ⚡ Balance Energético Integral — {fecha_sel} (acumulado hasta {hora_str})")
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
+    k1.metric("🔋 Tracción", f"{t_trac:,.0f} kWh")
+    k2.metric("❄️ Auxiliar", f"{t_aux:,.0f} kWh")
+    k3.metric("♻️ Regen Bruta", f"{regen_bruta:,.0f} kWh", help="Energía recuperada en motores")
+    k4.metric("✅ Regen Útil", f"{t_regen:,.0f} kWh", delta=f"+{tasa_global:.1f}% a red", delta_color="normal")
+    k5.metric("🔥 Reóstato", f"{t_reostat:,.0f} kWh", delta=f"−{100-tasa_global:.1f}% disipado", delta_color="inverse")
+    k6.metric("💡 IDE Comercial", f"{ide_global:.3f} kWh/km", help="kWh neto / Tren-km (sin vacíos)")
+    st.caption(f"η̄ receptividad promedio: **{eta_prom*100:.1f}%**")
+    st.divider()
 
 # =============================================================================
 # ORQUESTADOR CENTRAL: GEMELO DIGITAL
