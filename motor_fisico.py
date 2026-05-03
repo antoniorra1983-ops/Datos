@@ -47,7 +47,7 @@ def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodo
     km_orig, km_dest = km_orig if km_orig is not None else (0.0 if via == 1 else KM_TOTAL), km_dest if km_dest is not None else (KM_TOTAL if via == 1 else 0.0)
     km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
     t_prof = float(np.interp(km_orig * 1000.0, km_sorted, t_sorted)) + frac * (float(np.interp(km_dest * 1000.0, km_sorted, t_sorted)) - float(np.interp(km_orig * 1000.0, km_sorted, t_sorted)))
-        km_arr, t_arr_prof = _PROF[(via, use_rm)]
+    km_arr, t_arr_prof = _PROF[(via, use_rm)]
     return max(0.0, min(float(np.interp(t_prof, t_arr_prof, km_arr)) / 1000.0, KM_TOTAL))
 
 def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=None):
@@ -67,7 +67,6 @@ def calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_nominal):
     return max(0.45, min((eta_nominal / 0.95) * eta_vel * eta_carga, eta_nominal))
 
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
-    # 💡 INYECCIÓN HVAC: Manejo Térmico Realista de Cocheras
     if estado_marcha == "WAKE_UP": return aux_kw_nominal * 0.65
     elif estado_marcha == "SHUT_DOWN": return aux_kw_nominal * 0.25
 
@@ -110,16 +109,14 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             
             v_kmh = v_ms * 3.6
             f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
-            f_pend = next((DAVIS_E_N_PERMIL * ((ELEV_M[j] - ELEV_M[j-1]) / max(0.001, (ELEV_KM[j] - ELEV_KM[j-1])*1000)) * 1000 * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0) for j in range(1, len(ELEV_KM)) if ELEV_KM[j-1] <= km_actual <= ELEV_KM[j] or (j == len(ELEV_KM)-1 and km_actual > ELEV_KM[j])), 0.0) if use_pend else 0.0
+            f_pend = next((DAVIS_E_N_PERMIL * ((_ELEV_M[j] - _ELEV_M[j-1]) / max(0.001, (_ELEV_KM[j] - _ELEV_KM[j-1])*1000)) * 1000 * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0) for j in range(1, len(_ELEV_KM)) if _ELEV_KM[j-1] <= km_actual <= _ELEV_KM[j] or (j == len(_ELEV_KM)-1 and km_actual > _ELEV_KM[j])), 0.0) if use_pend else 0.0
             
-            # 💡 INYECCIÓN FÍSICA: Resistencia de Curvatura (Von Röckl)
             f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_MERVAL if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini)), 0.0)
             
             a_freno_op = f['a_freno_ms2'] * 0.9 
             f_trac_bruta = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
             f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
             
-            # 💡 INYECCIÓN SQUEEZE CONTROL ACTIVO (Limitación Dinámica por Tensión Vcc)
             if estado_marcha in ["ACCEL", "CRUISE"]:
                 dist_to_ser = min([abs(km_actual - s_km) for s_km, s_name in SER_DATA])
                 r_km_val = 0.0638 if km_actual < 2.25 else (0.0530 if km_actual < 6.80 else (0.0495 if km_actual < 10.92 else (0.0417 if km_actual < 21.41 else (0.0399 if km_actual < 30.36 else 0.0355))))
@@ -156,7 +153,6 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             jerk_aplicado = max(-0.80, min(0.80, (a_net_target - a_prev) / dt))
             a_net = a_prev + jerk_aplicado * dt
             
-            # Integración Analítica Mejorada (Evita Overshooting de Euler)
             dt_actual = dt
             v_new = v_ms + (a_prev * dt_actual) + (0.5 * jerk_aplicado * dt_actual**2)
             
@@ -284,44 +280,31 @@ def procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, 
             for tren, group in df_px_filtered.groupby('Tren_Clean'):
                 if str(tren).strip() == '': continue
                 perfiles_por_servicio[str(tren)] = {c: int(round(group[c].mean())) for c in PAX_COLS} | {'CargaMax_Promedio': int(round(group['CargaMax'].mean()))}
-    
     for idx, r in df_sint.iterrows():
         via_tren, t_ini_tren, num_srv = r['Via'], r['t_ini'], str(r.get('num_servicio', '')).strip()
         cap_m = FLOTA[r['tipo_tren']].get('cap_max', 398) * (2 if r['doble'] else 1)
-        
         if perfiles_por_servicio and num_srv in perfiles_por_servicio:
             p = perfiles_por_servicio[num_srv]
-            pax_calculado = p.get('CargaMax_Promedio', 0)
-            pax_arr_viaje = {k: v for k, v in p.items() if k != 'CargaMax_Promedio'}
+            pax_calculado, pax_arr_viaje = p.get('CargaMax_Promedio', 0), {k: v for k, v in p.items() if k != 'CargaMax_Promedio'}
         elif not df_px_filtered.empty:
             sub_v = df_px_filtered[df_px_filtered['Via'] == via_tren].copy()
             sub_v['diff'] = sub_v['t_ini_p'].apply(lambda x: min(abs(float(x)-float(t_ini_tren)), 1440-abs(float(x)-float(t_ini_tren))))
             idx_min = sub_v['diff'].idxmin()
             if sub_v.loc[idx_min, 'diff'] <= 20:
                 best_group = sub_v[sub_v['t_ini_p'] == sub_v.loc[idx_min, 't_ini_p']]
-                pax_calculado = int(round(best_group['CargaMax'].mean()))
-                pax_arr_viaje = {c: int(round(best_group[c].mean())) for c in PAX_COLS}
+                pax_calculado, pax_arr_viaje = int(round(best_group['CargaMax'].mean())), {c: int(round(best_group[c].mean())) for c in PAX_COLS}
             else:
                 pax_dict_din = perfiles_por_via.get(via_tren, {})
                 f_gauss = 0.2 + 0.8 * np.exp(-0.5 * ((t_ini_tren - 450)/60)**2) + 0.8 * np.exp(-0.5 * ((t_ini_tren - 1080)/90)**2)
                 pax_calculado = int(pax_dict_din.get('CargaMax_Promedio', pax_promedio_viaje) * f_gauss * 1.5)
-                if pax_dict_din:
-                    pax_arr_viaje = {k: int(v * f_gauss * 1.5) for k, v in pax_dict_din.items() if k != 'CargaMax_Promedio'}
-                else:
-                    pax_arr_viaje = {c: int(pax_calculado/len(PAX_COLS)) for c in PAX_COLS}
+                pax_arr_viaje = {k: int(v * f_gauss * 1.5) for k, v in pax_dict_din.items() if k != 'CargaMax_Promedio'} if pax_dict_din else {c: int(pax_calculado/len(PAX_COLS)) for c in PAX_COLS}
         else:
             f_gauss = 0.2 + 0.8 * np.exp(-0.5 * ((t_ini_tren - 450)/60)**2) + 0.8 * np.exp(-0.5 * ((t_ini_tren - 1080)/90)**2)
-            # 💡 FIX: Corrección del UnboundLocalError separando la asignación en múltiples líneas
-            pax_calculado = int(pax_promedio_viaje * f_gauss * 1.5)
-            pax_arr_viaje = {c: int(pax_calculado / len(PAX_COLS)) for c in PAX_COLS}
-            
-        pax_calculado = min(pax_calculado, cap_m)
-        pax_arr_viaje = {k: min(v, cap_m) for k, v in pax_arr_viaje.items()}
-        
+            pax_calculado, pax_arr_viaje = int(pax_promedio_viaje * f_gauss * 1.5), {c: int(pax_calculado / len(PAX_COLS)) for c in PAX_COLS}
+        pax_calculado, pax_arr_viaje = min(pax_calculado, cap_m), {k: min(v, cap_m) for k, v in pax_arr_viaje.items()}
         trc_v, aux_v, reg_v, _, _, t_h = simular_tramo_termodinamico(r['tipo_tren'], r['doble'], r['km_orig'], r['km_dest'], r['Via'], pct_trac, use_rm, use_pend, r['nodos'], pax_arr_viaje, pax_calculado, None, None, estacion_anio_plan, r['t_ini'])
         viaje_final = r.to_dict() | {'pax_d': pax_arr_viaje, 'pax_abordo': pax_calculado, 't_fin': r['t_ini'] + (t_h * 60.0)}
         viajes_completos.append(viaje_final)
-        
     df_sint_final = pd.DataFrame(viajes_completos)
     df_sint_final['tren_km'] = df_sint_final.apply(calc_tren_km_real_general, axis=1)
     df_sint_final.index = df_sint_final['_id']
