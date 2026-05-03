@@ -458,19 +458,17 @@ def main():
             
             st.markdown(f"<div style='text-align:center; padding:10px; background-color:#E8F5E9; color:#2E7D32; border-radius:8px; border:1px solid #C8E6C9; margin-bottom:10px;'><b>Estrategia de Flota Activa:</b> {st.session_state.get('estrategia_flota', 'A: Por Trayecto (Macro)')}</div>", unsafe_allow_html=True)
 
-            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()), df_vacios_real=df_vacios_real, km_limache_manual=km_limache_manual)
-
-            # 💡 RESTAURACIÓN: TABLA THDR SINTÉTICO (La que borré por error)
-            st.divider()
+            # 💡 REUBICACIÓN Y MEJORA: TABLA THDR SINTÉTICO JUSTO ABAJO DEL BOTÓN
             st.markdown("### 📋 THDR Sintético (Malla Operativa Generada)")
-            st.caption("Esta tabla es el equivalente matemático al THDR de EFE. Contiene los tiempos **exactos** de llegada calculados por el simulador.")
+            st.caption("Esta tabla es el equivalente matemático al THDR de EFE. Contiene los tiempos **exactos** de llegada calculados por el simulador considerando la masa física, el Tiempo de Viaje (TDV) y los límites eléctricos.")
             
             df_sint_show = df_final_mem.copy()
             df_sint_show['Hora_Salida'] = df_sint_show['t_ini'].apply(mins_to_time_str)
             df_sint_show['Hora_Llegada'] = df_sint_show['t_fin'].apply(mins_to_time_str)
+            df_sint_show['TDV (min)'] = (df_sint_show['t_fin'] - df_sint_show['t_ini']).round(1)
             df_sint_show['Configuración'] = df_sint_show['doble'].apply(lambda x: 'Doble' if x else 'Simple')
             
-            cols_sint_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Via', 'Hora_Salida', 'Hora_Llegada', 'pax_abordo']
+            cols_sint_export = ['_id', 'num_servicio', 'svc_type', 'tipo_tren', 'Configuración', 'Via', 'Hora_Salida', 'Hora_Llegada', 'TDV (min)', 'pax_abordo']
             cols_sint_exist = [c for c in cols_sint_export if c in df_sint_show.columns]
             
             st.dataframe(df_sint_show[cols_sint_exist], use_container_width=True)
@@ -482,6 +480,10 @@ def main():
                 file_name=f"THDR_Sintetico_V118.csv",
                 mime='text/csv'
             )
+            
+            st.divider()
+
+            render_gemelo_digital(df_final_mem, df_e_mem, active_sers, f"Planificador: {nombre_perfil}", pct_trac, use_rm, use_pend, estacion_anio_plan, prefix_key="plan", gap_vias=gap_vias, pax_dia_total=int(df_final_mem['pax_abordo'].sum()), df_vacios_real=df_vacios_real, km_limache_manual=km_limache_manual)
 
     with tab_mapa:
         if df_all.empty:
