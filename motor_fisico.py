@@ -67,6 +67,7 @@ def calcular_eficiencia_vvvf(v_kmh, carga_pct, eta_nominal):
     return max(0.45, min((eta_nominal / 0.95) * eta_vel * eta_carga, eta_nominal))
 
 def calcular_aux_dinamico(aux_kw_nominal, hora_decimal, pax_abordo, cap_max, estacion_anio, estado_marcha="CRUISE"):
+    # 💡 INYECCIÓN HVAC: Manejo Térmico Realista de Cocheras
     if estado_marcha == "WAKE_UP": return aux_kw_nominal * 0.65
     elif estado_marcha == "SHUT_DOWN": return aux_kw_nominal * 0.25
 
@@ -111,17 +112,20 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
             f_pend = next((DAVIS_E_N_PERMIL * ((ELEV_M[j] - ELEV_M[j-1]) / max(0.001, (ELEV_KM[j] - ELEV_KM[j-1])*1000)) * 1000 * (masa_kg / 1000.0) * (1.0 if via_op==1 else -1.0) for j in range(1, len(ELEV_KM)) if ELEV_KM[j-1] <= km_actual <= ELEV_KM[j] or (j == len(ELEV_KM)-1 and km_actual > ELEV_KM[j])), 0.0) if use_pend else 0.0
             
+            # 💡 INYECCIÓN FÍSICA: Resistencia de Curvatura (Von Röckl)
             f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_MERVAL if (c_ini <= km_actual <= c_fin) or (c_fin <= km_actual <= c_ini)), 0.0)
             
             a_freno_op = f['a_freno_ms2'] * 0.9 
             f_trac_bruta = min(f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0), (f['p_max_kw']*1000*n_uni*(pct_trac/100.0))/max(0.1, v_ms)) if v_ms > 0 else f['f_trac_max_kn']*1000*n_uni*(pct_trac/100.0)
             f_disp_freno = min(f['f_freno_max_kn']*1000*n_uni, (f.get('p_freno_max_kw', f['p_max_kw']*1.2)*1000*n_uni)/max(0.1, v_ms)) if v_kmh >= f['v_freno_min'] else 0.0
             
+            # 💡 INYECCIÓN SQUEEZE CONTROL ACTIVO (Limitación Dinámica por Tensión Vcc)
             if estado_marcha in ["ACCEL", "CRUISE"]:
                 dist_to_ser = min([abs(km_actual - s_km) for s_km, s_name in SER_DATA])
                 r_km_val = 0.0638 if km_actual < 2.25 else (0.0530 if km_actual < 6.80 else (0.0495 if km_actual < 10.92 else (0.0417 if km_actual < 21.41 else (0.0399 if km_actual < 30.36 else 0.0355))))
                 p_elec_max_kw = ((f_trac_bruta * max(0.1, v_ms)) / 1000.0 / calcular_eficiencia_vvvf(v_kmh, 1.0, f.get('eta_motor', 0.92))) + (f['aux_kw'] * n_uni)
                 V_panto = V_NOMINAL_DC - (((p_elec_max_kw * 1000.0) / V_NOMINAL_DC) * (r_km_val * dist_to_ser))
+                
                 factor_squeeze = 0.0 if V_panto < 2000.0 else ((V_panto - 2000.0) / 800.0 if V_panto < 2800.0 else 1.0)
                 f_disp_trac = f_trac_bruta * factor_squeeze
             else:
@@ -152,6 +156,7 @@ def simular_tramo_termodinamico(tipo_tren, doble, km_ini, km_fin, via_op, pct_tr
             jerk_aplicado = max(-0.80, min(0.80, (a_net_target - a_prev) / dt))
             a_net = a_prev + jerk_aplicado * dt
             
+            # Integración Analítica Mejorada (Evita Overshooting de Euler)
             dt_actual = dt
             v_new = v_ms + (a_prev * dt_actual) + (0.5 * jerk_aplicado * dt_actual**2)
             
