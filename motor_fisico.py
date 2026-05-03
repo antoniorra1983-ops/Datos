@@ -29,7 +29,7 @@ def vel_at_km(km_km, via, use_rm):
     return 0.0
 
 def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodos=None, t_arr=None):
-    if nodos is not None and len(nodos) >= 2:
+    if nodos is not None and len(nodos) >= 2 and nodos[-1][0] > 0.0:
         if t <= nodos[0][0]: return nodos[0][1]
         if t >= nodos[-1][0]: return nodos[-1][1]
         t_arr = [n[0] for n in nodos] if t_arr is None else t_arr
@@ -47,12 +47,12 @@ def km_at_t(t_ini, t_fin, t, via, use_rm=False, km_orig=None, km_dest=None, nodo
     km_orig, km_dest = km_orig if km_orig is not None else (0.0 if via == 1 else KM_TOTAL), km_dest if km_dest is not None else (KM_TOTAL if via == 1 else 0.0)
     km_sorted, t_sorted = _PROF_SORTED[(via, use_rm)]
     t_prof = float(np.interp(km_orig * 1000.0, km_sorted, t_sorted)) + frac * (float(np.interp(km_dest * 1000.0, km_sorted, t_sorted)) - float(np.interp(km_orig * 1000.0, km_sorted, t_sorted)))
-    km_arr, t_arr_prof = _PROF[(via, use_rm)]
+        km_arr, t_arr_prof = _PROF[(via, use_rm)]
     return max(0.0, min(float(np.interp(t_prof, t_arr_prof, km_arr)) / 1000.0, KM_TOTAL))
 
 def get_train_state_and_speed(t, r_via, use_rm, km_orig, km_dest, nodos, t_arr=None):
-    if not nodos or len(nodos) < 2: return "CRUISE", 60.0
-    t_arr = [n[0] for n in nodos] if t_arr is None else t_arr
+    if not nodos or len(nodos) < 2 or nodos[-1][0] <= 0.0: return "CRUISE", 60.0
+    if t_arr is None: t_arr = [n[0] for n in nodos]
     if t <= t_arr[0] or t >= t_arr[-1]: return "DWELL", 0.0
     idx = np.searchsorted(t_arr, t)
     dt_from_A, dt_to_B = t - t_arr[idx-1], t_arr[idx] - t
