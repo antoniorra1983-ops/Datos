@@ -243,7 +243,7 @@ def precalcular_red_electrica_v111(df_dia, pct_trac, use_rm, estacion_anio="prim
                 v_ms = v_kmh / 3.6
                 p_aux_kw = calcular_aux_dinamico(f['aux_kw'] * n_uni, m / 60.0, tr['pax_abordo'], f.get('cap_max', 398) * n_uni, estacion_anio, state)
                 f_davis = ((f['davis_A'] * 2) + (f['davis_B'] * 2 * v_kmh) + (f['davis_C'] * 1.35 * (v_kmh**2))) if n_uni == 2 else (f['davis_A'] + f['davis_B']*v_kmh + f['davis_C']*(v_kmh**2))
-                f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_MERVAL if (c_ini <= pos <= c_fin) or (c_fin <= pos <= c_ini)), 0.0)
+                f_curva = next((DAVIS_E_N_PERMIL * (600.0 / (c_rad - 55.0) if c_rad >= 300.0 else 500.0 / (c_rad - 30.0)) * (masa_kg / 1000.0) for c_ini, c_fin, c_rad in CURVAS_DEF if (c_ini <= pos <= c_fin) or (c_fin <= pos <= c_ini)), 0.0)
                 f_resistencia = f_davis + f_curva
                 
                 if state in ("BRAKE", "BRAKE_STATION", "BRAKE_OVERSPEED"):
@@ -304,23 +304,32 @@ def procesar_planificador_reactivo(df_sint, df_px_filtered, estacion_anio_plan, 
         cap_m = FLOTA[r['tipo_tren']].get('cap_max', 398) * (2 if r['doble'] else 1)
         if perfiles_por_servicio and num_srv in perfiles_por_servicio:
             p = perfiles_por_servicio[num_srv]
-            pax_calculado, pax_arr_viaje = p.get('CargaMax_Promedio', 0), {k: v for k, v in p.items() if k != 'CargaMax_Promedio'}
+            pax_calculado = p.get('CargaMax_Promedio', 0)
+            pax_arr_viaje = {k: v for k, v in p.items() if k != 'CargaMax_Promedio'}
         elif not df_px_filtered.empty:
             sub_v = df_px_filtered[df_px_filtered['Via'] == via_tren].copy()
             sub_v['diff'] = sub_v['t_ini_p'].apply(lambda x: min(abs(float(x)-float(t_ini_tren)), 1440-abs(float(x)-float(t_ini_tren))))
             idx_min = sub_v['diff'].idxmin()
             if sub_v.loc[idx_min, 'diff'] <= 20:
                 best_group = sub_v[sub_v['t_ini_p'] == sub_v.loc[idx_min, 't_ini_p']]
-                pax_calculado, pax_arr_viaje = int(round(best_group['CargaMax'].mean())), {c: int(round(best_group[c].mean())) for c in PAX_COLS}
+                pax_calculado = int(round(best_group['CargaMax'].mean()))
+                pax_arr_viaje = {c: int(round(best_group[c].mean())) for c in PAX_COLS}
             else:
                 pax_dict_din = perfiles_por_via.get(via_tren, {})
                 f_gauss = 0.2 + 0.8 * np.exp(-0.5 * ((t_ini_tren - 450)/60)**2) + 0.8 * np.exp(-0.5 * ((t_ini_tren - 1080)/90)**2)
                 pax_calculado = int(pax_dict_din.get('CargaMax_Promedio', pax_promedio_viaje) * f_gauss * 1.5)
-                pax_arr_viaje = {k: int(v * f_gauss * 1.5) for k, v in pax_dict_din.items() if k != 'CargaMax_Promedio'} if pax_dict_din else {c: int(pax_calculado/len(PAX_COLS)) for c in PAX_COLS}
+                if pax_dict_din:
+                    pax_arr_viaje = {k: int(v * f_gauss * 1.5) for k, v in pax_dict_din.items() if k != 'CargaMax_Promedio'}
+                else:
+                    pax_arr_viaje = {c: int(pax_calculado/len(PAX_COLS)) for c in PAX_COLS}
         else:
             f_gauss = 0.2 + 0.8 * np.exp(-0.5 * ((t_ini_tren - 450)/60)**2) + 0.8 * np.exp(-0.5 * ((t_ini_tren - 1080)/90)**2)
-            pax_calculado, pax_arr_viaje = int(pax_promedio_viaje * f_gauss * 1.5), {c: int(pax_calculado / len(PAX_COLS)) for c in PAX_COLS}
-        pax_calculado, pax_arr_viaje = min(pax_calculado, cap_m), {k: min(v, cap_m) for k, v in pax_arr_viaje.items()}
+            pax_calculado = int(pax_promedio_viaje * f_gauss * 1.5)
+            pax_arr_viaje = {c: int(pax_calculado / len(PAX_COLS)) for c in PAX_COLS}
+            
+        pax_calculado = min(pax_calculado, cap_m)
+        pax_arr_viaje = {k: min(v, cap_m) for k, v in pax_arr_viaje.items()}
+        
         trc_v, aux_v, reg_v, _, _, t_h = simular_tramo_termodinamico(r['tipo_tren'], r['doble'], r['km_orig'], r['km_dest'], r['Via'], pct_trac, use_rm, use_pend, r['nodos'], pax_arr_viaje, pax_calculado, None, None, estacion_anio_plan, r['t_ini'])
         viaje_final = r.to_dict() | {'pax_d': pax_arr_viaje, 'pax_abordo': pax_calculado, 't_fin': r['t_ini'] + (t_h * 60.0)}
         viajes_completos.append(viaje_final)
