@@ -131,8 +131,8 @@ def main():
         
         st.subheader("Reporte Oficial EFE")
         f_vacios_efe = st.file_uploader("Km Vacío Oficial EFE (.csv o .xlsx)", accept_multiple_files=True, key="vac_efe")
-        # 💡 CONTROL: Parámetro para inyectar kilómetros manuales a nivel global
-        km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de Shunting con 3 decimales (metros). Se simulará a 20 km/h en bloques de 1 km.")
+        # INYECCIÓN DEL KILOMETRAJE MANUAL AL CONTROLADOR
+        km_limache_manual = st.number_input("➕ Km Vacío Patio Limache", min_value=0.000, value=0.000, step=0.001, format="%.3f", on_change=reset_plan_state, help="Añade kilometraje de maniobras en Limache con 3 decimales (metros).")
         st.divider()
         
         st.subheader("✂️ Gestión de Flota (Split & Merge)")
@@ -259,7 +259,7 @@ def main():
         fechas = []
 
     # =========================================================================
-    # ESTRUCTURA DE TABS (SIEMPRE VISIBLE)
+    # ESTRUCTURA DE TABS
     # =========================================================================
     tab_mapa, tab_datos, tab_vacios, tab_planificador = st.tabs(["🗺️ Mapa Operativo Histórico", "📋 Reporte Pasajeros", "🚉 Maniobras en Vacío", "🔮 Planificador Inteligente"])
     
@@ -584,6 +584,7 @@ def main():
                         "Configuración": str(v.get('tipo', 'XT-100'))
                     })
             
+            # INYECCIÓN VISUAL DEL KILOMETRAJE MANUAL EN LA TABLA
             if km_limache_manual > 0:
                 tabla_vacios.append({
                     "Hora Oficial": "00:00:00 (Diario)",
