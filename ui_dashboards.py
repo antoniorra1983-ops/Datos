@@ -6,81 +6,9 @@ import time
 import json
 import plotly.graph_objects as go
 from config import *
+from etl_parser import mins_to_time_str, get_pax_at_km, get_vacios_dia
 from red_electrica import calcular_flujo_ac_nodo, distribuir_potencia_sers_kw, distribuir_energia_sers
 from motor_fisico import km_at_t, vel_at_km, get_train_state_and_speed, calcular_aux_dinamico, simular_tramo_termodinamico
-
-# =============================================================================
-# FUNCIONES DE APOYO VISUAL ENCAPSULADAS (BLINDAJE ANTI-ERRORES)
-# =============================================================================
-def mins_to_time_str(mins):
-    if pd.isna(mins): return '--:--:--'
-    try:
-        m_val = float(mins)
-        while m_val >= 1440: m_val -= 1440
-        while m_val < 0: m_val += 1440
-        h = int(m_val // 60)
-        m = int(m_val % 60)
-        s = int(round((m_val * 60) % 60))
-        if s == 60: s = 0; m += 1
-        if m == 60: m = 0; h += 1
-        return f"{h:02d}:{m:02d}:{s:02d}"
-    except: return '--:--:--'
-
-def get_pax_at_km(pax_d, km_pos, via, pax_max_fallback=0):
-    if not pax_d or not isinstance(pax_d, dict): return pax_max_fallback
-    if sum(pax_d.values()) == 0 and pax_max_fallback > 0: return pax_max_fallback
-    pax_val = 0
-    if via == 1:
-        for i in range(N_EST):
-            if km_pos >= KM_ACUM[i]:
-                val = pax_d.get(PAX_COLS[i])
-                if val is not None: pax_val = val
-            else: break
-    else:
-        for i in range(N_EST - 1, -1, -1):
-            if km_pos <= KM_ACUM[i]:
-                val = pax_d.get(PAX_COLS[i])
-                if val is not None: pax_val = val
-            else: break
-    return int(pax_val)
-
-def get_vacios_dia(df_dia):
-    vacios = []
-    if df_dia.empty: return vacios
-    agrupador = 'motriz_num' if 'motriz_num' in df_dia.columns else 'num_servicio'
-    
-    def _get_est_name(km):
-        if pd.isna(km): return "Desconocido"
-        dists = [abs(km - k) for k in KM_ACUM]
-        idx = int(np.argmin(dists))
-        if dists[idx] <= 1.5: return ESTACIONES[idx]
-        return f"km {km:.1f}"
-        
-    for tren, group in df_dia.sort_values('t_ini').groupby(agrupador):
-        if str(tren).strip() == '' or str(tren).strip() == 'nan': continue
-        viajes = group.to_dict('records')
-        if not viajes: continue
-        
-        p = viajes[0]
-        if abs(p.get('km_orig', 0) - KM_ACUM[14]) < 0.1:
-            vacios.append({'t_asigned': p['t_ini'] - 10, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'El Belloto', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
-        elif abs(p.get('km_orig', 0) - KM_ACUM[18]) < 0.1:
-            vacios.append({'t_asigned': p['t_ini'] - 20, 'tipo': p.get('tipo_tren', 'XT-100'), 'doble': p.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[18], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Taller / Cochera', 'destino_txt': 'Sargento Aldea', 'servicio_previo': '—', 'servicio_siguiente': str(p.get('num_servicio', ''))})
-            
-        for i in range(len(viajes) - 1):
-            actual, sig = viajes[i], viajes[i+1]
-            k_o, k_d = actual.get('km_dest', 0), sig.get('km_orig', 0)
-            dist = abs(k_o - k_d)
-            if 0.1 < dist <= 20.0:
-                vacios.append({'t_asigned': actual['t_fin'] + 5, 'tipo': actual.get('tipo_tren', 'XT-100'), 'doble': actual.get('doble', False), 'cochera': False, 'km_orig': k_o, 'km_dest': k_d, 'dist': dist, 'motriz_num': tren, 'origen_txt': _get_est_name(k_o), 'destino_txt': _get_est_name(k_d), 'servicio_previo': str(actual.get('num_servicio', '')), 'servicio_siguiente': str(sig.get('num_servicio', ''))})
-                
-        u = viajes[-1]
-        if abs(u.get('km_dest', 0) - KM_ACUM[14]) < 0.1:
-            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[14], 'km_dest': KM_ACUM[14], 'dist': 2.0, 'motriz_num': tren, 'origen_txt': 'El Belloto', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
-        elif abs(u.get('km_dest', 0) - KM_ACUM[18]) < 0.1:
-            vacios.append({'t_asigned': u['t_fin'] + 5, 'tipo': u.get('tipo_tren', 'XT-100'), 'doble': u.get('doble', False), 'cochera': True, 'km_orig': KM_ACUM[18], 'km_dest': KM_ACUM[14], 'dist': 2.0 + abs(KM_ACUM[18]-KM_ACUM[14]), 'motriz_num': tren, 'origen_txt': 'Sargento Aldea', 'destino_txt': 'Taller / Cochera', 'servicio_previo': str(u.get('num_servicio', '')), 'servicio_siguiente': '—'})
-            
-    return vacios
 
 # =============================================================================
 # MOTOR VISUAL 1: RENDERIZADO ESTÁTICO PYTHON (DOM SVG INYECTADO)
@@ -400,7 +328,6 @@ def draw_scada_js(df_dia_e, ser_accum_plot, seat_accum_plot, hora_inicial, titul
         drawTrains();
     });
     
-    // Init
     drawTrains();
     requestAnimationFrame(loop);
     """
@@ -765,7 +692,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         st.markdown(svg_html, unsafe_allow_html=True)
 
     # =========================================================================
-    # 4. PANELES DE DATOS 
+    # 4. PANELES DE DATOS (SIEMPRE VISIBLES PARA AMBOS MODOS)
     # =========================================================================
     n_circ = len(df_act) if not df_act.empty else 0
     n_d    = int(df_act['doble'].sum()) if not df_act.empty else 0
@@ -932,7 +859,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
         a1,a2,a3,a4,a5,a6 = st.columns(6)
         with a1: st.metric("📋 Iniciados", n_inic)
         with a2: st.metric("✅ Completados", n_comp)
-        with a3: st.metric("📏 Tren-km", f"{km_ac:,.0f}")
+        with a3: st.metric("📏 Tren-km Comercial", f"{km_ac:,.0f}")
         with a4: st.metric("⚡ kWh SERs", f"{total_ser_kwh_44kv:,.0f}")
 
         if prefix_key == "plan":
@@ -953,7 +880,7 @@ def render_gemelo_digital(df_dia, df_dia_e, active_sers, fecha_sel, pct_trac, us
             st.caption("Consumo físico por tránsitos no comerciales. Incluye el carrusel a Velocidad de Consigna y restricción a 20 km/h en patios. *La energía ya está sumada a la demanda total de las SERs.*")
             v1, v2, v3 = st.columns(3)
             v1.metric("Maniobras en Vacío (Carrusel)", vacio_count)
-            v2.metric("Km Vacío", f"{vacio_km_total:,.3f} km")
+            v2.metric("Km Vacío Total", f"{vacio_km_total:,.3f} km")
             v3.metric("Consumo Eléctrico Vacío", f"{vacio_kwh_total:,.0f} kWh")
 
         st.divider()
