@@ -2,7 +2,6 @@ from config import *
 
 def calcular_demanda_ser(e_pantografo_kwh, t_horas, km_punto, km_ser):
     if t_horas <= 0: return e_pantografo_kwh
-    V_NOMINAL = 3000.0  
     if km_punto < 2.25: r_km = 0.0638       
     elif km_punto < 6.80: r_km = 0.0530     
     elif km_punto < 10.92: r_km = 0.0495    
@@ -11,7 +10,7 @@ def calcular_demanda_ser(e_pantografo_kwh, t_horas, km_punto, km_ser):
     else: r_km = 0.0355                     
     R_total = r_km * abs(km_punto - km_ser)
     P_kW = abs(e_pantografo_kwh) / t_horas
-    I = (P_kW * 1000.0) / V_NOMINAL
+    I = (P_kW * 1000.0) / V_NOMINAL_DC
     P_loss_kW = (I**2 * R_total) / 1000.0
     if e_pantografo_kwh >= 0: return e_pantografo_kwh + (P_loss_kW * t_horas)
     else: return -max(0.0, abs(e_pantografo_kwh) - (P_loss_kW * t_horas))
