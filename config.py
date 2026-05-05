@@ -30,6 +30,10 @@ N_EST    = len(ESTACIONES)
 _ELEV_KM = [0.0, 0.7, 1.4, 2.2, 3.9, 6.0, 7.4, 8.3, 9.2, 10.2, 11.7, 19.1, 21.4, 23.3, 25.3, 26.4, 27.6, 28.5, 29.1, 30.4, 43.13]
 _ELEV_M  = [12, 10, 10, 10, 18, 15, 12, 15, 35, 50, 55, 88, 122, 132, 142, 148, 155, 162, 175, 198, 216]
 
+# Alias explícitos de retrocompatibilidad
+ELEV_KM = _ELEV_KM
+ELEV_M  = _ELEV_M
+
 # Coordenadas GPS de las Estaciones
 EST_LATS = [-33.03846,-33.04295,-33.04405,-33.04241,-33.03284,-33.02703,-33.02496,
             -33.02642,-33.02868,-33.03300,-33.04113,-33.04031,-33.04532,-33.03966,
@@ -88,10 +92,21 @@ _AUX_HVAC_HORA = {
     "primavera": [0.42,0.40,0.39,0.39,0.41,0.46, 0.53,0.58,0.63,0.68,0.72,0.75, 0.77,0.78,0.77,0.74,0.70,0.66, 0.61,0.57,0.53,0.49,0.46,0.44],
 }
 
+# Alias para la carga de variables heredadas en funciones importadas
+AUX_HVAC_HORA = _AUX_HVAC_HORA
+AUX_HVAC_DEF  = _AUX_HVAC_HORA
+
 _FRAC_HVAC = 0.70
+FRAC_HVAC = _FRAC_HVAC
+FRAC_HVAC_DEF = _FRAC_HVAC
+
 _FRAC_BASE = 0.30
-_FACTOR_DWELL_COMPRESOR = 1.03  # Fallback base (Reemplazado por el de FLOTA en Motor Físico)
-FACTOR_DWELL_COMPRESOR = 1.03   # Alias de retrocompatibilidad
+FRAC_BASE = _FRAC_BASE
+FRAC_BASE_DEF = _FRAC_BASE
+
+_FACTOR_DWELL_COMPRESOR = 1.03  
+FACTOR_DWELL_COMPRESOR = 1.03   
+FACTOR_DWELL_DEF = 1.03
 
 # =============================================================================
 # 5. DICCIONARIO DE FLOTA CERTIFICADA (MATERIAL RODANTE)
@@ -211,4 +226,22 @@ feriados_2026 = [
     '2026-01-01', '2026-04-03', '2026-04-04', '2026-05-01', '2026-05-21', 
     '2026-06-21', '2026-07-16', '2026-08-15', '2026-09-18', '2026-09-19', 
     '2026-10-12', '2026-10-31', '2026-12-08', '2026-12-25'
+]
+
+# =============================================================================
+# 8. MANEJO DE EXPORTACIONES EXPLÍCITAS (EVITA IMPORTERRORS)
+# =============================================================================
+__all__ = [
+    'ESTACIONES', 'EC', 'PAX_COLS', 'PAX_IDX', 'KM_TRAMO', 'KM_ACUM', 'KM_TOTAL', 'N_EST',
+    '_ELEV_KM', '_ELEV_M', 'ELEV_KM', 'ELEV_M', 'EST_LATS', 'EST_LONS',
+    'CAP_PUERTO', 'CAP_BELLOTO', 'CAP_LIMACHE',
+    'SER_DATA', 'SEAT_KM', 'SER_CAPACITY_KW', 'SEAT_CAPACITY_KW',
+    'Z_EFF_44KV', 'R_AC_44KV', 'V_NOMINAL_AC', 'V_NOMINAL_DC', 'V_SQUEEZE_WARN',
+    'ETA_SER_RECTIFICADOR', 'ETA_TRAC_SISTEMA', 'ETA_REGEN_NETA', 'LAMBDA_REGEN_KM', 'ETA_MAX',
+    'PAX_KG', 'DWELL_DEF', 'DAVIS_E_N_PERMIL',
+    '_AUX_HVAC_HORA', 'AUX_HVAC_HORA', 'AUX_HVAC_DEF',
+    '_FRAC_HVAC', 'FRAC_HVAC', 'FRAC_HVAC_DEF',
+    '_FRAC_BASE', 'FRAC_BASE', 'FRAC_BASE_DEF',
+    '_FACTOR_DWELL_COMPRESOR', 'FACTOR_DWELL_COMPRESOR', 'FACTOR_DWELL_DEF',
+    'FLOTA', 'SPEED_PROFILE', 'feriados_2026'
 ]
