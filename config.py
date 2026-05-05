@@ -1,4 +1,5 @@
 # config.py - Variables Globales, Infraestructura y Material Rodante MERVAL
+# Versión Calibrada V118 - Basada en Reporte ALSTOM TRA-305 (Punto Dulce: 32 kW)
 
 # =============================================================================
 # 1. INFRAESTRUCTURA Y RED GEOGRÁFICA
@@ -18,7 +19,6 @@ PAX_COLS = ['PUE','BEL','FRA','BAR','POR','REC','MIR','VIN','HOS','CHO',
 
 PAX_IDX  = {c: i for i, c in enumerate(PAX_COLS)}
 
-# Distancias oficiales entre estaciones (Km) - Single Source of Truth
 KM_TRAMO = [0.7, 0.7, 0.8, 1.7, 2.1, 1.4, 0.9, 0.9, 1.0, 1.5, 7.4, 2.3, 1.9, 2.0, 1.1, 1.2, 0.9, 0.6, 1.3, 12.73]
 KM_ACUM  = [0.0]
 for _k in KM_TRAMO: 
@@ -26,15 +26,12 @@ for _k in KM_TRAMO:
 KM_TOTAL = KM_ACUM[-1]
 N_EST    = len(ESTACIONES)
 
-# Perfil de Elevación Topográfica
 _ELEV_KM = [0.0, 0.7, 1.4, 2.2, 3.9, 6.0, 7.4, 8.3, 9.2, 10.2, 11.7, 19.1, 21.4, 23.3, 25.3, 26.4, 27.6, 28.5, 29.1, 30.4, 43.13]
 _ELEV_M  = [12, 10, 10, 10, 18, 15, 12, 15, 35, 50, 55, 88, 122, 132, 142, 148, 155, 162, 175, 198, 216]
 
-# Alias explícitos de retrocompatibilidad
 ELEV_KM = _ELEV_KM
 ELEV_M  = _ELEV_M
 
-# Coordenadas GPS de las Estaciones
 EST_LATS = [-33.03846,-33.04295,-33.04405,-33.04241,-33.03284,-33.02703,-33.02496,
             -33.02642,-33.02868,-33.03300,-33.04113,-33.04031,-33.04532,-33.03966,
             -33.04311,-33.04385,-33.04158,-33.04258,-33.04203,-33.04019,-32.98427]
@@ -43,15 +40,14 @@ EST_LONS = [-71.62709,-71.62088,-71.61244,-71.60567,-71.59123,-71.57501,-71.5616
             -71.40651,-71.37354,-71.36594,-71.35302,-71.27771]
 
 # =============================================================================
-# 2. CAPACIDADES DE INFRAESTRUCTURA Y PARQUEO NOCTURNO
+# 2. CAPACIDADES DE INFRAESTRUCTURA (Stabling Plan)
 # =============================================================================
-# Límite físico de trenes pernoctando en terminales (Stabling Plan)
 CAP_PUERTO  = 4
 CAP_BELLOTO = 16
 CAP_LIMACHE = 16
 
 # =============================================================================
-# 3. RED ELÉCTRICA (Catenaria y Subestaciones)
+# 3. RED ELÉCTRICA
 # =============================================================================
 SER_DATA = [
     (KM_ACUM[4] + 1.0, "SER PO"),
@@ -70,7 +66,6 @@ V_NOMINAL_AC = 44000.0
 V_NOMINAL_DC = 3000.0
 V_SQUEEZE_WARN = 2850.0
 
-# Eficiencias de Transmisión y Conversión
 ETA_SER_RECTIFICADOR = 0.96 
 ETA_TRAC_SISTEMA = 0.92  
 ETA_REGEN_NETA   = 0.72   
@@ -78,13 +73,12 @@ LAMBDA_REGEN_KM  = 5.0
 ETA_MAX   = 0.70
 
 # =============================================================================
-# 4. CONSTANTES DE FÍSICA CINEMÁTICA Y PASAJEROS
+# 4. CONSTANTES DE FÍSICA Y AUXILIARES
 # =============================================================================
 PAX_KG    = 75.0
 DWELL_DEF = 8.0  
 DAVIS_E_N_PERMIL = 9.81
 
-# Perfiles de Auxiliares Dinámicos
 _AUX_HVAC_HORA = {
     "verano": [0.60,0.55,0.55,0.55,0.58,0.65, 0.72,0.78,0.83,0.88,0.92,0.95, 0.98,1.00,1.00,0.98,0.95,0.90, 0.85,0.80,0.75,0.70,0.67,0.63],
     "otoño": [0.40,0.38,0.37,0.37,0.38,0.42, 0.48,0.52,0.56,0.60,0.63,0.65, 0.66,0.66,0.65,0.63,0.60,0.57, 0.53,0.50,0.47,0.44,0.42,0.41],
@@ -92,7 +86,6 @@ _AUX_HVAC_HORA = {
     "primavera": [0.42,0.40,0.39,0.39,0.41,0.46, 0.53,0.58,0.63,0.68,0.72,0.75, 0.77,0.78,0.77,0.74,0.70,0.66, 0.61,0.57,0.53,0.49,0.46,0.44],
 }
 
-# Alias para la carga de variables heredadas en funciones importadas
 AUX_HVAC_HORA = _AUX_HVAC_HORA
 AUX_HVAC_DEF  = _AUX_HVAC_HORA
 
@@ -109,7 +102,7 @@ FACTOR_DWELL_COMPRESOR = 1.03
 FACTOR_DWELL_DEF = 1.03
 
 # =============================================================================
-# 5. DICCIONARIO DE FLOTA CERTIFICADA (MATERIAL RODANTE)
+# 5. DICCIONARIO DE FLOTA CERTIFICADA (Ajuste real 32 kW)
 # =============================================================================
 FLOTA = {
     "XT-100": {
@@ -130,8 +123,8 @@ FLOTA = {
         "f_freno_max_kn": 105.0,  
         "p_max_kw"     : 720.0,
         "p_freno_max_kw": 600.0,
-        "aux_kw"       : 46.0,
-        "f_compresor_dwell": 1.03  # +3% Base (Frenos mecánicos/Puertas), sin balonas
+        "aux_kw"       : 32.0,         # 💡 Basado en Realidad Operativa (Exclusión térmica)
+        "f_compresor_dwell": 1.03  
     },
     "XT-M": {
         "tara_t"       : 95.0,  
@@ -151,8 +144,8 @@ FLOTA = {
         "f_freno_max_kn": 110.0,  
         "p_max_kw"     : 1040.0,
         "p_freno_max_kw": 800.0,
-        "aux_kw"       : 55.0,
-        "f_compresor_dwell": 1.06  # +3% Base + 3% Balonas suspensión secundaria
+        "aux_kw"       : 40.0,         # 💡 Escalado proporcional por modernización
+        "f_compresor_dwell": 1.06  
     },
     "SFE": {
         "tara_t"       : 141.0,  
@@ -171,8 +164,8 @@ FLOTA = {
         "f_freno_max_kn": 190.0,  
         "p_max_kw"     : 2400.0,
         "p_freno_max_kw": 2800.0,
-        "aux_kw"       : 190.0,
-        "f_compresor_dwell": 1.08  # +3% Base + 5% Balonas (Tren más masivo)
+        "aux_kw"       : 140.0,        # 💡 Basado en volumen 3 coches y carga masiva
+        "f_compresor_dwell": 1.08  
     },
 }
 
@@ -233,15 +226,15 @@ feriados_2026 = [
 # =============================================================================
 __all__ = [
     'ESTACIONES', 'EC', 'PAX_COLS', 'PAX_IDX', 'KM_TRAMO', 'KM_ACUM', 'KM_TOTAL', 'N_EST',
-    '_ELEV_KM', '_ELEV_M', 'ELEV_KM', 'ELEV_M', 'EST_LATS', 'EST_LONS',
+    'ELEV_KM', 'ELEV_M', 'EST_LATS', 'EST_LONS',
     'CAP_PUERTO', 'CAP_BELLOTO', 'CAP_LIMACHE',
     'SER_DATA', 'SEAT_KM', 'SER_CAPACITY_KW', 'SEAT_CAPACITY_KW',
     'Z_EFF_44KV', 'R_AC_44KV', 'V_NOMINAL_AC', 'V_NOMINAL_DC', 'V_SQUEEZE_WARN',
     'ETA_SER_RECTIFICADOR', 'ETA_TRAC_SISTEMA', 'ETA_REGEN_NETA', 'LAMBDA_REGEN_KM', 'ETA_MAX',
     'PAX_KG', 'DWELL_DEF', 'DAVIS_E_N_PERMIL',
-    '_AUX_HVAC_HORA', 'AUX_HVAC_HORA', 'AUX_HVAC_DEF',
-    '_FRAC_HVAC', 'FRAC_HVAC', 'FRAC_HVAC_DEF',
-    '_FRAC_BASE', 'FRAC_BASE', 'FRAC_BASE_DEF',
-    '_FACTOR_DWELL_COMPRESOR', 'FACTOR_DWELL_COMPRESOR', 'FACTOR_DWELL_DEF',
+    'AUX_HVAC_HORA', 'AUX_HVAC_DEF',
+    'FRAC_HVAC', 'FRAC_HVAC_DEF',
+    'FRAC_BASE', 'FRAC_BASE_DEF',
+    'FACTOR_DWELL_COMPRESOR', 'FACTOR_DWELL_DEF',
     'FLOTA', 'SPEED_PROFILE', 'feriados_2026'
 ]
